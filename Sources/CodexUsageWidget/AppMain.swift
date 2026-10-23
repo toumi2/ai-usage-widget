@@ -85,7 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Codex Usage")
+        item.button?.image = StatusBarIcon.makeImage()
         item.button?.toolTip = "Codex Usage"
 
         let menu = NSMenu()

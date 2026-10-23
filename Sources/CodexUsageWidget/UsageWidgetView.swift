@@ -11,14 +11,21 @@ struct UsageWidgetView: View {
                 WindowDragHandle()
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) {
-                        if isHovered {
-                            Image(systemName: "hand.draw")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .allowsHitTesting(false)
+                        HStack(spacing: 6) {
+                            Text(snapshot?.resetCredits?.label ?? "Resets —")
+                                .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.82))
+                                .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
+                                .lineLimit(1)
+                            if isHovered {
+                                Image(systemName: "hand.draw")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.9))
+                            }
                         }
+                        .allowsHitTesting(false)
                     }
-                    .help("Drag to move")
+                    .help(resetCreditHelp)
                 if isHovered {
                     controlButton("arrow.clockwise", label: "Refresh usage", action: controller.refresh)
                     controlButton("slider.horizontal.3", label: "Settings") { controller.showSettings() }
@@ -39,7 +46,11 @@ struct UsageWidgetView: View {
                 controller.refresh()
             }
         }
-        .background(Color.clear)
+        .background {
+            widgetGlassBackground
+                .opacity(isWidgetBackgroundVisible ? 1 : 0)
+        }
+        .animation(.easeInOut(duration: 0.16), value: isWidgetBackgroundVisible)
         .accessibilityElement(children: .contain)
     }
 
@@ -50,6 +61,31 @@ struct UsageWidgetView: View {
 
     private var isNarrow: Bool {
         controller.size == .tiny || controller.size == .small
+    }
+
+    private var resetCreditHelp: String {
+        let details = snapshot?.resetCredits?.hoverDetails
+            ?? "Reset-credit information is not available from Codex."
+        return details + "\n\nDrag this area to move the widget."
+    }
+
+    private var isWidgetBackgroundVisible: Bool {
+        controller.backgroundMode == .always || isHovered
+    }
+
+    @ViewBuilder
+    private var widgetGlassBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        if #available(macOS 26.0, *) {
+            shape
+                .fill(.clear)
+                .glassEffect(.clear, in: shape)
+        } else {
+            shape
+                .fill(.regularMaterial)
+                .overlay { shape.fill(Color.black.opacity(0.42)) }
+                .overlay { shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75) }
+        }
     }
 
     private var canRefreshOnHover: Bool {
@@ -66,7 +102,7 @@ struct UsageWidgetView: View {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Text(title)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
                 Text(window.map { "\(Int($0.remainingPercent.rounded()))% left" } ?? "—")
                     .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
@@ -76,7 +112,7 @@ struct UsageWidgetView: View {
                 Spacer(minLength: 8)
                 Text(resetLabel(for: window))
                     .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.72))
                     .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -84,7 +120,7 @@ struct UsageWidgetView: View {
 
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.14))
+                    Capsule().fill(Color.white.opacity(0.18))
                     Capsule()
                         .fill(color(for: window?.remainingPercent))
                         .frame(width: max(0, geometry.size.width * min(max((window?.remainingPercent ?? 0) / 100, 0), 1)))
@@ -101,8 +137,9 @@ struct UsageWidgetView: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.94))
                 .frame(width: 18, height: 18)
+                .background(Circle().fill(Color.white.opacity(0.12)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -118,16 +155,10 @@ struct UsageWidgetView: View {
 
     private func resetLabel(for window: UsageWindow?) -> String {
         guard let timestamp = window?.resetsAt else { return "Reset unavailable" }
-        let date = Date(timeIntervalSince1970: timestamp)
-        let interval = max(0, date.timeIntervalSinceNow)
-        if interval < 24 * 60 * 60 {
-            let hours = Int(interval / 3600)
-            let minutes = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
-            if hours == 0 { return isNarrow ? "in \(minutes)m" : "Resets in \(minutes)m" }
-            return isNarrow ? "in \(hours)h \(minutes)m" : "Resets in \(hours)h \(minutes)m"
-        }
-        let time = date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
-        return isNarrow ? time : "Resets \(time)"
+        let countdown = UsageTimeFormatting.countdown(until: timestamp)
+        if countdown == "unavailable" { return "Reset unavailable" }
+        if countdown == "now" { return isNarrow ? "now" : "Resets now" }
+        return isNarrow ? "in \(countdown)" : "Resets in \(countdown)"
     }
 
     private func rowHelp(window: UsageWindow?) -> String {

@@ -8,6 +8,7 @@ let package = Package(
         .executable(name: "CodexUsageWidget", targets: ["CodexUsageWidget"])
     ],
     targets: [
-        .executableTarget(name: "CodexUsageWidget")
+        .executableTarget(name: "CodexUsageWidget"),
+        .testTarget(name: "CodexUsageWidgetTests", dependencies: ["CodexUsageWidget"])
     ]
 )

@@ -16,6 +16,20 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+
+                Picker("Background", selection: Binding(
+                    get: { controller.backgroundMode },
+                    set: controller.setBackgroundMode
+                )) {
+                    ForEach(WidgetBackgroundMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Text("Choose when the glass panel appears.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Updates") {

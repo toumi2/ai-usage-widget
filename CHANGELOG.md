@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Display available reset credits with their provided expiry dates on hover.
+- Use relative reset countdowns for both usage windows; omit minutes above six hours.
+
 ## 1.0.1 — 2026-09-26
 
 - Fix hosted universal release builds and keep the published tag buildable from source.

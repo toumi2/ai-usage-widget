@@ -15,6 +15,7 @@ struct UsageWindow: Decodable {
 struct UsageSnapshot {
     let weekly: UsageWindow?
     let fiveHour: UsageWindow?
+    let resetCredits: ResetCredits?
     let updatedAt: Date
 }
 
@@ -72,6 +73,24 @@ enum RefreshInterval: Int, CaseIterable, Identifiable {
     }
 }
 
+enum WidgetBackgroundMode: String, CaseIterable, Identifiable {
+    case onHover
+    case always
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .onHover: return "On hover"
+        case .always: return "Always"
+        }
+    }
+
+    static var current: WidgetBackgroundMode {
+        WidgetBackgroundMode(rawValue: UserDefaults.standard.string(forKey: "widget.backgroundMode") ?? "onHover") ?? .onHover
+    }
+}
+
 @MainActor
 final class UsageController: ObservableObject {
     static let shared = UsageController()
@@ -80,6 +99,7 @@ final class UsageController: ObservableObject {
     @Published var isRefreshing = false
     @Published var size = WidgetSize.current
     @Published private(set) var refreshInterval = RefreshInterval.current
+    @Published private(set) var backgroundMode = WidgetBackgroundMode.current
     @Published private(set) var startupEnabled = SMAppService.mainApp.status == .enabled
 
     var onSizeChange: ((WidgetSize) -> Void)?
@@ -157,6 +177,10 @@ final class UsageController: ObservableObject {
         state = .available(UsageSnapshot(
             weekly: UsageWindow(usedPercent: 64, windowDurationMins: 10_080, resetsAt: now.addingTimeInterval(4 * 86_400).timeIntervalSince1970),
             fiveHour: UsageWindow(usedPercent: 27, windowDurationMins: 300, resetsAt: now.addingTimeInterval(5 * 3_600).timeIntervalSince1970),
+            resetCredits: ResetCredits(availableCount: 2, credits: [
+                ResetCredit(status: "available", expiresAt: now.addingTimeInterval(7 * 86_400).timeIntervalSince1970),
+                ResetCredit(status: "available", expiresAt: now.addingTimeInterval(14 * 86_400).timeIntervalSince1970)
+            ]),
             updatedAt: now
         ))
     }
@@ -173,6 +197,11 @@ final class UsageController: ObservableObject {
         refreshInterval = interval
         UserDefaults.standard.set(interval.rawValue, forKey: "widget.refreshInterval")
         schedulePolling()
+    }
+
+    func setBackgroundMode(_ mode: WidgetBackgroundMode) {
+        backgroundMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: "widget.backgroundMode")
     }
 
     func setStartupEnabled(_ enabled: Bool) {
@@ -310,7 +339,10 @@ private struct CodexAppServerReader {
         let weekly = windows.first { ($0.windowDurationMins ?? 0) >= 1_440 }
         let fiveHour = windows.first { ($0.windowDurationMins ?? 0) > 0 && ($0.windowDurationMins ?? 0) < 1_440 }
         guard weekly != nil || fiveHour != nil else { throw UsageReaderError.missingLimits }
-        return UsageSnapshot(weekly: weekly, fiveHour: fiveHour, updatedAt: Date())
+        let resetCredits = (result["rateLimitResetCredits"] as? [String: Any])
+            .flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+            .flatMap { try? JSONDecoder().decode(ResetCredits.self, from: $0) }
+        return UsageSnapshot(weekly: weekly, fiveHour: fiveHour, resetCredits: resetCredits, updatedAt: Date())
     }
 }
 
