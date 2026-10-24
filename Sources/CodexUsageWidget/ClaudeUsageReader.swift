@@ -174,6 +174,16 @@ struct ClaudeUsageReader {
                 dump(output)
                 throw ClaudeReaderError.notSignedIn
             }
+            // Folder trust prompt for the app's own empty folder. "No, exit" is preselected,
+            // so move down to "Yes, I trust this folder" before confirming.
+            if !answeredTrust && (compact.contains("trustthisfolder") || compact.contains("trustthefiles")) {
+                answeredTrust = true
+                usleep(300_000)
+                send("\u{1B}[B")
+                usleep(300_000)
+                send("\r")
+                continue
+            }
             // First-run screens of a signed-in CLI (theme picker, notes): accept the defaults.
             if !sentUsage, ClaudeUsageParser.isOnboardingScreen(ClaudeUsageParser.compact(ClaudeUsageParser.lastScreen(text))),
                onboardingEnters < 6, Date().timeIntervalSince(lastOnboardingEnter) > 1.5 {
@@ -182,12 +192,6 @@ struct ClaudeUsageReader {
                 send("\r")
                 continue
             }
-            if !answeredTrust && compact.contains("trustthefiles") {
-                answeredTrust = true
-                send("\r") // Default answer is "Yes, proceed" for the app's own empty folder.
-                continue
-            }
-
             let elapsed = Date().timeIntervalSince(start)
             let tail = ClaudeUsageParser.compact(ClaudeUsageParser.lastScreen(text))
             let promptReady = !ClaudeUsageParser.isOnboardingScreen(tail)
@@ -241,8 +245,7 @@ enum ClaudeUsageParser {
     }
 
     static func isOnboardingScreen(_ compact: String) -> Bool {
-        ["choosethetextstyle", "securitynotes", "pressentertocontinue", "usetheseterminalsettings",
-         "trustthefiles"].contains { compact.contains($0) }
+        ["choosethetextstyle", "securitynotes", "pressentertocontinue", "usetheseterminalsettings"].contains { compact.contains($0) }
     }
 
     /// Roughly the most recent screenful, so old frames don't keep matching.

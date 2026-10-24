@@ -61,6 +61,27 @@ final class ClaudeUsageParserTests: XCTestCase {
         XCTAssertEqual(snapshot.fiveHour?.usedPercent, 42)
     }
 
+    /// Text captured from Claude Code 2.1.274's /usage screen.
+    func testParsesRealCliScreen() throws {
+        let screen = """
+           Settings  Status   Config   Usage   Stats
+           Current session
+           ██████▌                                           13%used
+           Resets 11:40am (Africa/Algiers)
+           Current week (all models)
+           █████                                             10%used
+           Resets Oct 25 at 9am (Africa/Algiers)
+           What's contributing to your limits usage?
+           Esc to cancel
+        """
+        let snapshot = try ClaudeUsageParser.parse(screen: screen, now: now, timeZone: paris)
+        XCTAssertEqual(snapshot.fiveHour?.usedPercent, 13)
+        XCTAssertEqual(snapshot.weekly?.usedPercent, 10)
+        // Africa/Algiers is UTC+1, Paris is UTC+2 on this date.
+        XCTAssertEqual(snapshot.weekly?.resetsAt, parisDate(10, 25, 10).timeIntervalSince1970)
+        XCTAssertEqual(snapshot.fiveHour?.resetsAt, parisDate(10, 24, 12, 40).timeIntervalSince1970)
+    }
+
     func testPercentLeftWording() {
         XCTAssertEqual(ClaudeUsageParser.percentUsed(in: "58%left"), 42)
         XCTAssertEqual(ClaudeUsageParser.percentUsed(in: "█████42%used"), 42)
