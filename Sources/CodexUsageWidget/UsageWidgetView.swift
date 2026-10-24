@@ -66,7 +66,13 @@ struct UsageWidgetView: View {
     private var headerLabel: String {
         switch controller.provider {
         case .codex: return "Codex · " + (snapshot?.resetCredits?.label ?? "Resets —")
-        case .claude: return "Claude"
+        case .claude:
+            if case .unavailable(let message) = controller.state {
+                return message.contains("signed in") || message.contains("wasn’t found")
+                    ? "Claude · sign in: run claude in Terminal"
+                    : "Claude · unavailable"
+            }
+            return "Claude"
         }
     }
 
