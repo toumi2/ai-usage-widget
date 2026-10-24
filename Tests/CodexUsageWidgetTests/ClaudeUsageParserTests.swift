@@ -1,0 +1,108 @@
+import Foundation
+import XCTest
+@testable import CodexUsageWidget
+
+final class ClaudeUsageParserTests: XCTestCase {
+    private let paris = TimeZone(identifier: "Europe/Paris")!
+    // 2026-10-23 20:00 in Paris.
+    private var now: Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = paris
+        return calendar.date(from: DateComponents(year: 2026, month: 10, day: 23, hour: 20, minute: 0))!
+    }
+
+    private func parisDate(_ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0, year: Int = 2026) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = paris
+        return calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    private let sampleScreen = """
+     Settings:  Status   Config   Usage
+
+     Current session
+     ██████████████████▌                                42% used
+     Resets 11pm (Europe/Paris)
+
+     Current week (all models)
+     ███████▌                                           15% used
+     Resets Oct 28, 10:30am (Europe/Paris)
+
+     Current week (Sonnet only)
+     █▌                                                 3% used
+     Resets Oct 28, 10:30am (Europe/Paris)
+
+     Esc to cancel
+    """
+
+    func testParsesSessionAndWeeklyWindows() throws {
+        let snapshot = try ClaudeUsageParser.parse(screen: sampleScreen, now: now, timeZone: paris)
+        XCTAssertEqual(snapshot.fiveHour?.usedPercent, 42)
+        XCTAssertEqual(snapshot.fiveHour?.remainingPercent, 58)
+        XCTAssertEqual(snapshot.fiveHour?.resetsAt, parisDate(10, 23, 23).timeIntervalSince1970)
+        XCTAssertEqual(snapshot.weekly?.usedPercent, 15, "Uses all models, not the Sonnet-only row")
+        XCTAssertEqual(snapshot.weekly?.resetsAt, parisDate(10, 28, 10, 30).timeIntervalSince1970)
+        XCTAssertNil(snapshot.resetCredits)
+    }
+
+    func testParsesScreenWithoutSpacesAndWithControlCodes() throws {
+        let raw = "\u{1B}[2K\u{1B}[1GCurrent\u{1B}[1Csession\r\n\u{1B}[38;5;246m███\u{1B}[39m\u{1B}[3C42%\u{1B}[1Cused\r\n"
+            + "Resets\u{1B}[1C11pm\u{1B}[1C(Europe/Paris)\r\n"
+            + "Currentweek(allmodels)\r\n15%used\r\nResetsOct28,10:30am(Europe/Paris)\r\n"
+        let snapshot = try ClaudeUsageParser.parse(screen: ClaudeUsageParser.clean(raw), now: now, timeZone: paris)
+        XCTAssertEqual(snapshot.fiveHour?.usedPercent, 42)
+        XCTAssertEqual(snapshot.fiveHour?.resetsAt, parisDate(10, 23, 23).timeIntervalSince1970)
+        XCTAssertEqual(snapshot.weekly?.resetsAt, parisDate(10, 28, 10, 30).timeIntervalSince1970)
+    }
+
+    func testUsesTheLastDrawnPanel() throws {
+        let older = sampleScreen.replacingOccurrences(of: "42% used", with: "10% used")
+        let snapshot = try ClaudeUsageParser.parse(screen: older + "\n" + sampleScreen, now: now, timeZone: paris)
+        XCTAssertEqual(snapshot.fiveHour?.usedPercent, 42)
+    }
+
+    func testPercentLeftWording() {
+        XCTAssertEqual(ClaudeUsageParser.percentUsed(in: "58%left"), 42)
+        XCTAssertEqual(ClaudeUsageParser.percentUsed(in: "█████42%used"), 42)
+        XCTAssertNil(ClaudeUsageParser.percentUsed(in: "nopercenthere"))
+    }
+
+    func testResetFormats() {
+        func reset(_ text: String) -> Date? { ClaudeUsageParser.resetDate(from: text, now: now, timeZone: paris) }
+        XCTAssertEqual(reset("Resets 11pm (Europe/Paris)"), parisDate(10, 23, 23))
+        XCTAssertEqual(reset("Resets 9am (Europe/Paris)"), parisDate(10, 24, 9), "Past time today rolls to tomorrow")
+        XCTAssertEqual(reset("Resets 12am"), parisDate(10, 24, 0))
+        XCTAssertEqual(reset("Resets Nov 2 at 5pm"), parisDate(11, 2, 17))
+        XCTAssertEqual(reset("Resets Jan 3, 2027, 8:15am"), parisDate(1, 3, 8, 15, year: 2027))
+        XCTAssertEqual(reset("Resets Jan 3, 8am"), parisDate(1, 3, 8, year: 2027), "Past month rolls to next year")
+        XCTAssertEqual(reset("Resets in 2h 15m"), now.addingTimeInterval(2 * 3_600 + 15 * 60))
+        XCTAssertNil(reset("Resets soon"))
+        // A timezone in the text wins over the local one.
+        XCTAssertEqual(
+            ClaudeUsageParser.resetDate(from: "Resets 5pm (America/New_York)", now: now, timeZone: paris),
+            parisDate(10, 23, 23)
+        )
+    }
+
+    func testSignedOutAndUnreadableScreens() {
+        XCTAssertThrowsError(try ClaudeUsageParser.parse(screen: "Select login method:\n❯ Claude account", now: now)) {
+            XCTAssertEqual($0 as? ClaudeReaderError, .notSignedIn)
+        }
+        XCTAssertThrowsError(try ClaudeUsageParser.parse(screen: "Welcome back!", now: now)) {
+            XCTAssertEqual($0 as? ClaudeReaderError, .unreadable)
+        }
+    }
+
+    func testPanelCompletion() {
+        XCTAssertTrue(ClaudeUsageParser.panelLooksComplete(ClaudeUsageParser.lastPanel(sampleScreen)))
+        XCTAssertFalse(ClaudeUsageParser.panelLooksComplete("Current session\n42% used\nResets 11pm"))
+    }
+
+    func testFrontmostAppMapping() {
+        XCTAssertEqual(UsageProvider.matching(bundleIdentifier: "com.anthropic.claudefordesktop"), .claude)
+        XCTAssertEqual(UsageProvider.matching(bundleIdentifier: "com.openai.codex"), .codex)
+        XCTAssertEqual(UsageProvider.matching(bundleIdentifier: "com.openai.chat"), .codex)
+        XCTAssertNil(UsageProvider.matching(bundleIdentifier: "com.apple.Terminal"))
+        XCTAssertNil(UsageProvider.matching(bundleIdentifier: nil))
+    }
+}

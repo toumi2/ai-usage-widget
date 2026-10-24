@@ -12,7 +12,7 @@ struct UsageWidgetView: View {
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) {
                         HStack(spacing: 6) {
-                            Text(snapshot?.resetCredits?.label ?? "Resets —")
+                            Text(headerLabel)
                                 .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
                                 .foregroundStyle(.white.opacity(0.82))
                                 .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
@@ -27,7 +27,7 @@ struct UsageWidgetView: View {
                     }
                     .help(resetCreditHelp)
                 if isHovered {
-                    controlButton("arrow.clockwise", label: "Refresh usage", action: controller.refresh)
+                    controlButton("arrow.clockwise", label: "Refresh usage") { controller.refresh() }
                     controlButton("slider.horizontal.3", label: "Settings") { controller.showSettings() }
                     controlButton("xmark", label: "Quit Codex Usage") { NSApp.terminate(nil) }
                 }
@@ -41,8 +41,7 @@ struct UsageWidgetView: View {
         .frame(width: controller.size.dimensions.width, height: controller.size.dimensions.height)
         .onHover { hovering in
             isHovered = hovering
-            if hovering, canRefreshOnHover, let snapshot,
-               Date().timeIntervalSince(snapshot.updatedAt) > controller.refreshInterval.seconds {
+            if hovering, canRefreshOnHover, controller.isStale(controller.provider) {
                 controller.refresh()
             }
         }
@@ -63,10 +62,27 @@ struct UsageWidgetView: View {
         controller.size == .tiny || controller.size == .small
     }
 
+    /// "Codex · 2 resets" or "Claude". Reset credits only exist for Codex.
+    private var headerLabel: String {
+        switch controller.provider {
+        case .codex: return "Codex · " + (snapshot?.resetCredits?.label ?? "Resets —")
+        case .claude: return "Claude"
+        }
+    }
+
     private var resetCreditHelp: String {
-        let details = snapshot?.resetCredits?.hoverDetails
-            ?? "Reset-credit information is not available from Codex."
-        return details + "\n\nDrag this area to move the widget."
+        let details: String
+        switch controller.provider {
+        case .codex:
+            details = snapshot?.resetCredits?.hoverDetails
+                ?? "Reset-credit information is not available from Codex."
+        case .claude:
+            details = "Claude plan limits from the signed-in Claude Code CLI."
+        }
+        let switching = controller.providerMode == .automatic
+            ? "\nSwitches automatically when Codex or Claude is the front app."
+            : ""
+        return details + switching + "\n\nDrag this area to move the widget."
     }
 
     private var isWidgetBackgroundVisible: Bool {

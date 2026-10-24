@@ -7,6 +7,20 @@ enum CodexUsageWidgetApp {
     private static var delegate: AppDelegate?
 
     static func main() {
+#if DEBUG
+        if CommandLine.arguments.contains("--probe-claude") {
+            // Debug aid: read Claude usage once, print it and exit.
+            do {
+                let snapshot = try ClaudeUsageReader().readUsage()
+                print("5 hour: \(snapshot.fiveHour.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { Date(timeIntervalSince1970: $0) }.map(String.init(describing:)) ?? "?")" } ?? "none")")
+                print("Weekly: \(snapshot.weekly.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { Date(timeIntervalSince1970: $0) }.map(String.init(describing:)) ?? "?")" } ?? "none")")
+                exit(0)
+            } catch {
+                print("Error: \(error.localizedDescription)")
+                exit(1)
+            }
+        }
+#endif
         let application = NSApplication.shared
         delegate = AppDelegate()
         application.delegate = delegate

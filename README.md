@@ -28,6 +28,10 @@ This release is ad-hoc signed and is not notarized by Apple. On first launch, ma
 
 The app asks the locally installed Codex CLI app-server for account rate limits. It does not read or write Codex credential files. The CLI uses its existing sign-in and handles its own connection to Codex. No analytics or telemetry are added by this app. Availability and reset times depend on the data returned for the signed-in account; a window may be unavailable for some plans.
 
+For Claude, the app runs the locally installed Claude Code CLI (`claude`) in a hidden terminal inside its own empty folder, opens `/usage`, reads the 5-hour and weekly percentages, then closes it. No prompt is sent to the model and no tools, hooks or MCP servers are enabled. The app does not read Claude credentials. Sign in once by running `claude` in Terminal. If the CLI's `/usage` screen changes in a future version, the Claude bars may show as unavailable until the app is updated.
+
+In Auto mode the widget shows Claude when the Claude app is in front and Codex when the Codex app is; other apps keep the last one shown.
+
 ## Build from source
 
 Requirements: macOS 13 or later, Swift 5.9 or later, and a signed-in Codex CLI installation.

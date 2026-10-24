@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show Claude plan usage (5-hour session and weekly) read from the signed-in Claude Code CLI's `/usage` screen.
+- Switch automatically between Codex and Claude when either app is the frontmost app; add a Show setting (Auto, Always Codex, Always Claude).
+
 - Display available reset credits with their provided expiry dates on hover.
 - Use relative reset countdowns for both usage windows; omit minutes above six hours.
 

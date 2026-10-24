@@ -6,6 +6,22 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Service") {
+                Picker("Show", selection: Binding(
+                    get: { controller.providerMode },
+                    set: controller.setProviderMode
+                )) {
+                    ForEach(ProviderMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Text("Auto shows Claude when the Claude app is in front and Codex when the Codex app is. Other apps keep the last one shown.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Widget") {
                 Picker("Size", selection: Binding(
                     get: { controller.size },
@@ -62,14 +78,20 @@ struct SettingsView: View {
                 }
             }
 
-            Section("Codex") {
+            Section("Sources") {
                 HStack {
-                    Text("Usage source")
+                    Text("Codex")
                     Spacer()
                     Text("Signed-in Codex CLI")
                         .foregroundStyle(.secondary)
                 }
-                Button("Refresh usage now") { controller.refresh() }
+                HStack {
+                    Text("Claude")
+                    Spacer()
+                    Text("Signed-in Claude Code CLI (/usage)")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Refresh \(controller.provider.label) usage now") { controller.refresh() }
                     .disabled(controller.isRefreshing)
             }
         }
