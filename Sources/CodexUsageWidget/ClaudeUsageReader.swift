@@ -28,6 +28,7 @@ struct ClaudeUsageReader {
 
     func readUsage() throws -> UsageSnapshot {
         guard let claudeURL = Self.locateClaude() else { throw ClaudeReaderError.commandNotFound }
+        if Self.isSignedIn(claudeURL: claudeURL) == false { throw ClaudeReaderError.notSignedIn }
         let screen = try capture(claudeURL: claudeURL)
         return try ClaudeUsageParser.parse(screen: screen, now: Date())
     }
@@ -51,6 +52,40 @@ struct ClaudeUsageReader {
         return candidates.map(URL.init(fileURLWithPath:)).first { fileManager.isExecutableFile(atPath: $0.path) }
     }
 
+    /// The CLI finds its saved login by user name, so make sure USER and LOGNAME are set.
+    static func cliEnvironment(claudeURL: URL) -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        for key in environment.keys where key.hasPrefix("CLAUDE_CODE_") || key == "CLAUDECODE" {
+            environment.removeValue(forKey: key)
+        }
+        if environment["USER"]?.isEmpty ?? true { environment["USER"] = NSUserName() }
+        if environment["LOGNAME"]?.isEmpty ?? true { environment["LOGNAME"] = NSUserName() }
+        if environment["HOME"]?.isEmpty ?? true { environment["HOME"] = NSHomeDirectory() }
+        environment["PATH"] = "\(claudeURL.deletingLastPathComponent().path):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        return environment
+    }
+
+    /// Asks `claude auth status` (JSON, no network prompt). Returns nil when the answer is unclear.
+    static func isSignedIn(claudeURL: URL) -> Bool? {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = claudeURL
+        process.arguments = ["auth", "status"]
+        process.environment = cliEnvironment(claudeURL: claudeURL)
+        process.standardOutput = output
+        process.standardError = Pipe()
+        process.standardInput = FileHandle.nullDevice
+        process.currentDirectoryURL = probeDirectory()
+        do { try process.run() } catch { return nil }
+        let timer = DispatchWorkItem { if process.isRunning { process.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: timer)
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        timer.cancel()
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return object["loggedIn"] as? Bool
+    }
+
     /// A private, empty working folder so the CLI loads no project files.
     private static func probeDirectory() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -58,6 +93,12 @@ struct ClaudeUsageReader {
         let directory = base.appendingPathComponent("Codex Usage/ClaudeProbe", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+
+    /// Debug aid: set CODEX_USAGE_CLAUDE_DUMP to a file path to save the raw screen.
+    private func dump(_ data: Data) {
+        guard let path = ProcessInfo.processInfo.environment["CODEX_USAGE_CLAUDE_DUMP"] else { return }
+        try? data.write(to: URL(fileURLWithPath: path))
     }
 
     private func capture(claudeURL: URL) throws -> String {
@@ -78,12 +119,8 @@ struct ClaudeUsageReader {
             "--settings", #"{"disableAllHooks":true,"remoteControlAtStartup":false}"#
         ]
         process.currentDirectoryURL = Self.probeDirectory()
-        var environment = ProcessInfo.processInfo.environment
-        for key in environment.keys where key.hasPrefix("CLAUDE_CODE_") || key == "CLAUDECODE" {
-            environment.removeValue(forKey: key)
-        }
+        var environment = Self.cliEnvironment(claudeURL: claudeURL)
         environment["TERM"] = "xterm-256color"
-        environment["PATH"] = "\(claudeURL.deletingLastPathComponent().path):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         process.environment = environment
         process.standardInput = slaveHandle
         process.standardOutput = slaveHandle
@@ -109,6 +146,8 @@ struct ClaudeUsageReader {
         var output = Data()
         var sentUsage = false
         var answeredTrust = false
+        var onboardingEnters = 0
+        var lastOnboardingEnter = Date.distantPast
         var lastEnter = Date.distantPast
         var finishedAt: Date?
         let start = Date()
@@ -131,7 +170,18 @@ struct ClaudeUsageReader {
             let text = ClaudeUsageParser.clean(String(decoding: output, as: UTF8.self))
             let compact = ClaudeUsageParser.compact(text)
 
-            if ClaudeUsageParser.looksSignedOut(compact) { throw ClaudeReaderError.notSignedIn }
+            if ClaudeUsageParser.looksSignedOut(compact) {
+                dump(output)
+                throw ClaudeReaderError.notSignedIn
+            }
+            // First-run screens of a signed-in CLI (theme picker, notes): accept the defaults.
+            if !sentUsage, ClaudeUsageParser.isOnboardingScreen(ClaudeUsageParser.compact(ClaudeUsageParser.lastScreen(text))),
+               onboardingEnters < 6, Date().timeIntervalSince(lastOnboardingEnter) > 1.5 {
+                onboardingEnters += 1
+                lastOnboardingEnter = Date()
+                send("\r")
+                continue
+            }
             if !answeredTrust && compact.contains("trustthefiles") {
                 answeredTrust = true
                 send("\r") // Default answer is "Yes, proceed" for the app's own empty folder.
@@ -139,7 +189,9 @@ struct ClaudeUsageReader {
             }
 
             let elapsed = Date().timeIntervalSince(start)
-            let promptReady = compact.contains("forshortcuts") || compact.contains("❯") || elapsed > 6
+            let tail = ClaudeUsageParser.compact(ClaudeUsageParser.lastScreen(text))
+            let promptReady = !ClaudeUsageParser.isOnboardingScreen(tail)
+                && (tail.contains("forshortcuts") || tail.contains("tryedit") || elapsed > 10)
             if !sentUsage && promptReady {
                 sentUsage = true
                 send("/usage")
@@ -163,6 +215,7 @@ struct ClaudeUsageReader {
             }
         }
         send("\u{1B}")
+        dump(output)
         return ClaudeUsageParser.clean(String(decoding: output, as: UTF8.self))
     }
 }
@@ -187,8 +240,18 @@ enum ClaudeUsageParser {
         text.lowercased().filter { !$0.isWhitespace }
     }
 
+    static func isOnboardingScreen(_ compact: String) -> Bool {
+        ["choosethetextstyle", "securitynotes", "pressentertocontinue", "usetheseterminalsettings",
+         "trustthefiles"].contains { compact.contains($0) }
+    }
+
+    /// Roughly the most recent screenful, so old frames don't keep matching.
+    static func lastScreen(_ text: String) -> String {
+        String(text.suffix(3_000))
+    }
+
     static func looksSignedOut(_ compact: String) -> Bool {
-        ["selectloginmethod", "choosethetextstyle", "notloggedin", "pleaserun/login",
+        ["selectloginmethod", "notloggedin", "pleaserun/login",
          "authentication_error", "token_expired", "invalidapikey"].contains { compact.contains($0) }
     }
 
