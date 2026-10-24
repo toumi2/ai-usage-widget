@@ -77,8 +77,8 @@ final class ClaudeUsageParserTests: XCTestCase {
         let snapshot = try ClaudeUsageParser.parse(screen: screen, now: now, timeZone: paris)
         XCTAssertEqual(snapshot.fiveHour?.usedPercent, 13)
         XCTAssertEqual(snapshot.weekly?.usedPercent, 10)
-        // Africa/Algiers is UTC+1, Paris is UTC+2 on this date.
-        XCTAssertEqual(snapshot.weekly?.resetsAt, parisDate(10, 25, 10).timeIntervalSince1970)
+        // Africa/Algiers is UTC+1. Paris is UTC+2 on Oct 24 and UTC+1 from Oct 25 (DST ends).
+        XCTAssertEqual(snapshot.weekly?.resetsAt, parisDate(10, 25, 9).timeIntervalSince1970)
         XCTAssertEqual(snapshot.fiveHour?.resetsAt, parisDate(10, 24, 12, 40).timeIntervalSince1970)
     }
 
