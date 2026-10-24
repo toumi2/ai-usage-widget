@@ -22,7 +22,7 @@ This release is ad-hoc signed and is not notarized by Apple. On first launch, ma
 - The header shows available reset credits. Hover over the count for expiry dates, when Codex provides them. `Resets —` means this information is unavailable; it does not mean zero. This widget only reads reset-credit information and never redeems credits.
 - Hover over the widget to reveal refresh, settings, and quit controls. The hand icon marks the draggable area.
 - The menu bar icon provides **Show Widget**, **Refresh Usage**, **Settings**, and **Quit**.
-- Settings includes five sizes, a Liquid Glass background that appears on hover or stays visible, refresh intervals from 30 seconds to 5 minutes, and an **Open at login** option. macOS 13–15 use a translucent material fallback. The widget also refreshes when it becomes active if the displayed reading is older than the selected interval.
+- Settings includes five sizes (Tiny down to Pico), a Liquid Glass background that appears on hover or stays visible, refresh intervals from 30 seconds to 5 minutes, and an **Open at login** option. macOS 13–15 use a translucent material fallback. The widget also refreshes when it becomes active if the displayed reading is older than the selected interval.
 
 ## Usage data and privacy
 

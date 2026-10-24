@@ -27,26 +27,32 @@ enum UsageState {
 
 enum WidgetSize: String, CaseIterable, Identifiable {
     case tiny
-    case small
-    case compact
-    case regular
-    case large
+    case mini
+    case micro
+    case nano
+    case pico
 
     var id: String { rawValue }
     var label: String { rawValue.capitalized }
 
-    var dimensions: CGSize {
+    /// Tiny is the full-size layout; the smaller sizes shrink it evenly.
+    var scale: CGFloat {
         switch self {
-        case .tiny: return CGSize(width: 240, height: 78)
-        case .small: return CGSize(width: 264, height: 82)
-        case .compact: return CGSize(width: 286, height: 86)
-        case .regular: return CGSize(width: 326, height: 96)
-        case .large: return CGSize(width: 376, height: 112)
+        case .tiny: return 1.0
+        case .mini: return 0.9
+        case .micro: return 0.8
+        case .nano: return 0.7
+        case .pico: return 0.6
         }
     }
 
+    var dimensions: CGSize {
+        CGSize(width: (240 * scale).rounded(), height: (78 * scale).rounded())
+    }
+
+    /// Older saved sizes (Small through Large) were all bigger than Tiny, so they map to Tiny.
     static var current: WidgetSize {
-        WidgetSize(rawValue: UserDefaults.standard.string(forKey: "widget.size") ?? "regular") ?? .regular
+        WidgetSize(rawValue: UserDefaults.standard.string(forKey: "widget.size") ?? "tiny") ?? .tiny
     }
 }
 
@@ -234,7 +240,7 @@ final class UsageController: ObservableObject {
         pollingTimer?.invalidate()
         pollingTimer = nil
         isScreenshotPreview = true
-        size = .regular
+        size = .tiny
         let now = Date()
         states[.claude] = .available(UsageSnapshot(
             weekly: UsageWindow(usedPercent: 38, windowDurationMins: 10_080, resetsAt: now.addingTimeInterval(3 * 86_400).timeIntervalSince1970),

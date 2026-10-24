@@ -6,20 +6,20 @@ struct UsageWidgetView: View {
     @State private var isHovered = false
 
     var body: some View {
-        VStack(spacing: isNarrow ? 2 : 5) {
-            HStack(spacing: 7) {
+        VStack(spacing: px(2)) {
+            HStack(spacing: px(7)) {
                 WindowDragHandle()
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: px(6)) {
                             Text(headerLabel)
-                                .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                                .font(.system(size: px(10), weight: .medium, design: .rounded).monospacedDigit())
                                 .foregroundStyle(.white.opacity(0.82))
                                 .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
                                 .lineLimit(1)
                             if isHovered {
                                 Image(systemName: "hand.draw")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.system(size: px(12), weight: .medium))
                                     .foregroundStyle(.white.opacity(0.9))
                             }
                         }
@@ -32,12 +32,12 @@ struct UsageWidgetView: View {
                     controlButton("xmark", label: "Quit Codex Usage") { NSApp.terminate(nil) }
                 }
             }
-            .frame(height: 18)
+            .frame(height: px(18))
             usageRow(title: "Weekly", window: snapshot?.weekly)
             usageRow(title: "5 hour", window: snapshot?.fiveHour)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, isNarrow ? 4 : 6)
+        .padding(.horizontal, px(12))
+        .padding(.vertical, px(4))
         .frame(width: controller.size.dimensions.width, height: controller.size.dimensions.height)
         .onHover { hovering in
             isHovered = hovering
@@ -58,8 +58,11 @@ struct UsageWidgetView: View {
         return nil
     }
 
-    private var isNarrow: Bool {
-        controller.size == .tiny || controller.size == .small
+    /// All sizes use the compact layout; smaller sizes scale it down.
+    private var isNarrow: Bool { true }
+
+    private func px(_ value: CGFloat) -> CGFloat {
+        (value * controller.size.scale).rounded(.toNearestOrAwayFromZero)
     }
 
     /// "Codex · 2 resets" or "Claude". Reset credits only exist for Codex.
@@ -97,7 +100,7 @@ struct UsageWidgetView: View {
 
     @ViewBuilder
     private var widgetGlassBackground: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: px(14), style: .continuous)
         if #available(macOS 26.0, *) {
             shape
                 .fill(.clear)
@@ -120,20 +123,20 @@ struct UsageWidgetView: View {
 
     @ViewBuilder
     private func usageRow(title: String, window: UsageWindow?) -> some View {
-        VStack(spacing: isNarrow ? 2 : 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
+        VStack(spacing: px(2)) {
+            HStack(alignment: .firstTextBaseline, spacing: px(5)) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: px(12), weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
                 Text(window.map { "\(Int($0.remainingPercent.rounded()))% left" } ?? "—")
-                    .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.system(size: px(11), weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(color(for: window?.remainingPercent))
                     .shadow(color: .black.opacity(0.4), radius: 0.5, x: 0, y: 0.5)
                     .lineLimit(1)
-                Spacer(minLength: 8)
+                Spacer(minLength: px(8))
                 Text(resetLabel(for: window))
-                    .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                    .font(.system(size: px(10), weight: .medium, design: .rounded).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.72))
                     .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
                     .lineLimit(1)
@@ -148,7 +151,7 @@ struct UsageWidgetView: View {
                         .frame(width: max(0, geometry.size.width * min(max((window?.remainingPercent ?? 0) / 100, 0), 1)))
                 }
             }
-            .frame(height: 5)
+            .frame(height: px(5))
             .shadow(color: color(for: window?.remainingPercent).opacity(0.18), radius: 4, y: 1)
         }
         .frame(maxHeight: .infinity)
@@ -158,9 +161,9 @@ struct UsageWidgetView: View {
     private func controlButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: px(11), weight: .semibold))
                 .foregroundStyle(.white.opacity(0.94))
-                .frame(width: 18, height: 18)
+                .frame(width: px(18), height: px(18))
                 .background(Circle().fill(Color.white.opacity(0.12)))
                 .contentShape(Rectangle())
         }
