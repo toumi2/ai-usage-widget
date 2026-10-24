@@ -42,7 +42,8 @@ final class ClaudeUsageParserTests: XCTestCase {
         XCTAssertEqual(snapshot.fiveHour?.resetsAt, parisDate(10, 23, 23).timeIntervalSince1970)
         XCTAssertEqual(snapshot.weekly?.usedPercent, 15, "Uses all models, not the Sonnet-only row")
         XCTAssertEqual(snapshot.weekly?.resetsAt, parisDate(10, 28, 10, 30).timeIntervalSince1970)
-        XCTAssertNil(snapshot.resetCredits)
+        XCTAssertEqual(snapshot.resetCredits?.availableCount, 0)
+        XCTAssertEqual(snapshot.resetCredits?.label, "0 resets")
     }
 
     func testParsesScreenWithoutSpacesAndWithControlCodes() throws {
@@ -80,6 +81,12 @@ final class ClaudeUsageParserTests: XCTestCase {
         // Africa/Algiers is UTC+1. Paris is UTC+2 on Oct 24 and UTC+1 from Oct 25 (DST ends).
         XCTAssertEqual(snapshot.weekly?.resetsAt, parisDate(10, 25, 9).timeIntervalSince1970)
         XCTAssertEqual(snapshot.fiveHour?.resetsAt, parisDate(10, 24, 12, 40).timeIntervalSince1970)
+    }
+
+    func testResetCreditCountWhenTheScreenShowsOne() {
+        XCTAssertEqual(ClaudeUsageParser.resetCredits(in: "Limit resets\n 2 resets available").availableCount, 2)
+        XCTAssertEqual(ClaudeUsageParser.resetCredits(in: "1 limit reset left").availableCount, 1)
+        XCTAssertEqual(ClaudeUsageParser.resetCredits(in: "Resets 11:40am (Africa/Algiers)").availableCount, 0)
     }
 
     func testPercentLeftWording() {

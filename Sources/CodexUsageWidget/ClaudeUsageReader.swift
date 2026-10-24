@@ -292,7 +292,18 @@ enum ClaudeUsageParser {
             }
             throw ClaudeReaderError.unreadable
         }
-        return UsageSnapshot(weekly: week, fiveHour: session, resetCredits: nil, updatedAt: now)
+        return UsageSnapshot(weekly: week, fiveHour: session, resetCredits: resetCredits(in: panel), updatedAt: now)
+    }
+
+    /// Claude's /usage screen doesn't list reset credits today, so the count is 0 unless the
+    /// screen says otherwise (for example "2 resets available" or "1 limit reset left").
+    static func resetCredits(in panel: String) -> ResetCredits {
+        let text = compact(panel)
+        let pattern = #"(\d{1,2})(?:limit|usage)?resets?(?:credits?)?(?:available|left|remaining)"#
+        if let match = firstMatch(pattern, in: text), let count = Int(match[1]) {
+            return ResetCredits(availableCount: count, credits: nil)
+        }
+        return ResetCredits(availableCount: 0, credits: nil)
     }
 
     private static let labelMarkers = ["currentsession", "currentweek", "extrausage", "currentmonth"]
