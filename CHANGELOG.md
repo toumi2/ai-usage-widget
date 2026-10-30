@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-10-30
 
+- Rename the app from Codex Usage to **AI Usage**; settings, position and the login item identity carry over.
 - Show Claude plan usage (5-hour session and weekly) read from the signed-in Claude Code CLI's `/usage` screen.
 - Switch automatically between Codex and Claude when either app is the frontmost app; add a Show setting (Auto, Always Codex, Always Claude).
 - Make Tiny the largest size and add four smaller sizes: Mini, Micro, Nano and Pico. Older saved sizes open as Tiny.
-
+- Show the service name and Claude reset credits (0 unless the CLI lists some) in the header, plus a sign-in hint when the Claude CLI isn't signed in.
 - Display available reset credits with their provided expiry dates on hover.
 - Use relative reset countdowns for both usage windows; omit minutes above six hours.
+- Native clear Liquid Glass background on macOS 26, a new app icon and a monochrome menu bar icon.
 
 ## 1.0.1 — 2026-09-26
 

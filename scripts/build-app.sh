@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="Codex Usage"
+APP_NAME="AI Usage"
 APP_OUTPUT_ROOT="${APP_OUTPUT_ROOT:-$ROOT/build}"
 APP_PATH="$APP_OUTPUT_ROOT/$APP_NAME.app"
 APP_VERSION="${APP_VERSION:-1.1.0}"
@@ -40,7 +40,7 @@ cat > "$APP_PATH/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key><string>com.mounirtoumi.codexusagewidget</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
-    <key>CFBundleName</key><string>Codex Usage</string>
+    <key>CFBundleName</key><string>AI Usage</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleSignature</key><string>APPL</string>
     <key>CFBundleVersion</key><string>$APP_VERSION</string>

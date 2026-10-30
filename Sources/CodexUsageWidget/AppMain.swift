@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Codex Usage"
+        window.title = "AI Usage"
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
@@ -100,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = StatusBarIcon.makeImage()
-        item.button?.toolTip = "Codex Usage"
+        item.button?.toolTip = "AI Usage"
 
         let menu = NSMenu()
         let show = NSMenuItem(title: "Show Widget", action: #selector(showWidget), keyEquivalent: "")
@@ -116,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(settings)
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: "Quit Codex Usage", action: #selector(quitApp), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit AI Usage", action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 

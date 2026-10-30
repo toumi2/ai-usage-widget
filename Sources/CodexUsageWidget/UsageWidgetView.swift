@@ -29,7 +29,7 @@ struct UsageWidgetView: View {
                 if isHovered {
                     controlButton("arrow.clockwise", label: "Refresh usage") { controller.refresh() }
                     controlButton("slider.horizontal.3", label: "Settings") { controller.showSettings() }
-                    controlButton("xmark", label: "Quit Codex Usage") { NSApp.terminate(nil) }
+                    controlButton("xmark", label: "Quit AI Usage") { NSApp.terminate(nil) }
                 }
             }
             .frame(height: px(18))

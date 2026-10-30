@@ -72,7 +72,7 @@ struct SettingsView: View {
                 .disabled(SMAppService.mainApp.status == .requiresApproval)
 
                 if SMAppService.mainApp.status == .requiresApproval {
-                    Text("Allow Codex Usage in System Settings → General → Login Items.")
+                    Text("Allow AI Usage in System Settings → General → Login Items.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

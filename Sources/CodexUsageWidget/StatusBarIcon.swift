@@ -23,7 +23,7 @@ enum StatusBarIcon {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "Codex Usage"
+        image.accessibilityDescription = "AI Usage"
         return image
     }
 }

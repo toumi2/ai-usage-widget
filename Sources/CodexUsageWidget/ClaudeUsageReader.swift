@@ -90,7 +90,7 @@ struct ClaudeUsageReader {
     private static func probeDirectory() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let directory = base.appendingPathComponent("Codex Usage/ClaudeProbe", isDirectory: true)
+        let directory = base.appendingPathComponent("AI Usage/ClaudeProbe", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }

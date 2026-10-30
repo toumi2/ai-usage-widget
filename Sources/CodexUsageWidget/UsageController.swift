@@ -189,7 +189,7 @@ final class UsageController: ObservableObject {
             backing: .buffered,
             defer: false
         )
-        window.title = "Codex Usage Settings"
+        window.title = "AI Usage Settings"
         window.isReleasedWhenClosed = false
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView(controller: self))
@@ -355,7 +355,7 @@ struct CodexAppServerReader {
         let reader = LineReader(handle: output.fileHandleForReading)
         do {
             try write(["method": "initialize", "id": 1, "params": [
-                "clientInfo": ["name": "codex-usage-widget", "version": "1.0.0"],
+                "clientInfo": ["name": "ai-usage-widget", "version": "1.1.0"],
                 "capabilities": ["experimentalApi": true]
             ]], to: input)
             _ = try reader.readResponse(id: 1)
