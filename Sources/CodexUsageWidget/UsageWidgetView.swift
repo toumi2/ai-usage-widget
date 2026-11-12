@@ -87,7 +87,7 @@ struct UsageWidgetView: View {
                 ?? "Reset-credit information is not available from Codex."
         case .claude:
             details = (snapshot?.resetCredits?.hoverDetails ?? "Reset-credit information is not available yet.")
-                + "\nClaude plan limits from the signed-in Claude Code CLI. Its /usage screen shows no reset credits, so this stays at 0 until it does."
+                + "\nClaude plan limits from the signed-in Claude Code CLI. Reset credits come from Claude’s usage service using Claude Code’s saved login."
         }
         let switching = controller.providerMode == .automatic
             ? "\nSwitches automatically when Codex or Claude is the front app."

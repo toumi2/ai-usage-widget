@@ -30,7 +30,12 @@ struct ClaudeUsageReader {
         guard let claudeURL = Self.locateClaude() else { throw ClaudeReaderError.commandNotFound }
         if Self.isSignedIn(claudeURL: claudeURL) == false { throw ClaudeReaderError.notSignedIn }
         let screen = try capture(claudeURL: claudeURL)
-        return try ClaudeUsageParser.parse(screen: screen, now: Date())
+        let snapshot = try ClaudeUsageParser.parse(screen: screen, now: Date())
+        // The CLI doesn't show reset credits, so ask the usage endpoint. If that fails,
+        // keep whatever the screen showed (usually nothing, which displays as "Resets —").
+        let version = ClaudeUsageParser.cliVersion(in: screen)
+        guard let credits = ClaudeResetCreditsReader().cachedCredits(cliVersion: version) else { return snapshot }
+        return UsageSnapshot(weekly: snapshot.weekly, fiveHour: snapshot.fiveHour, resetCredits: credits, updatedAt: snapshot.updatedAt)
     }
 
     static func locateClaude() -> URL? {
@@ -295,15 +300,20 @@ enum ClaudeUsageParser {
         return UsageSnapshot(weekly: week, fiveHour: session, resetCredits: resetCredits(in: panel), updatedAt: now)
     }
 
-    /// Claude's /usage screen doesn't list reset credits today, so the count is 0 unless the
-    /// screen says otherwise (for example "2 resets available" or "1 limit reset left").
-    static func resetCredits(in panel: String) -> ResetCredits {
+    /// Claude's /usage screen doesn't list reset credits today. If a future version prints
+    /// something like "2 resets available", use it; otherwise the count is unknown (nil).
+    static func resetCredits(in panel: String) -> ResetCredits? {
         let text = compact(panel)
         let pattern = #"(\d{1,2})(?:limit|usage)?resets?(?:credits?)?(?:available|left|remaining)"#
         if let match = firstMatch(pattern, in: text), let count = Int(match[1]) {
             return ResetCredits(availableCount: count, credits: nil)
         }
-        return ResetCredits(availableCount: 0, credits: nil)
+        return nil
+    }
+
+    /// The CLI version from the welcome banner ("Claude Code v2.1.322").
+    static func cliVersion(in screen: String) -> String? {
+        firstMatch(#"claudecodev(\d+\.\d+\.\d+)"#, in: compact(screen))?[1]
     }
 
     private static let labelMarkers = ["currentsession", "currentweek", "extrausage", "currentmonth"]

@@ -42,8 +42,7 @@ final class ClaudeUsageParserTests: XCTestCase {
         XCTAssertEqual(snapshot.fiveHour?.resetsAt, parisDate(10, 23, 23).timeIntervalSince1970)
         XCTAssertEqual(snapshot.weekly?.usedPercent, 15, "Uses all models, not the Sonnet-only row")
         XCTAssertEqual(snapshot.weekly?.resetsAt, parisDate(10, 28, 10, 30).timeIntervalSince1970)
-        XCTAssertEqual(snapshot.resetCredits?.availableCount, 0)
-        XCTAssertEqual(snapshot.resetCredits?.label, "0 resets")
+        XCTAssertNil(snapshot.resetCredits, "The screen has no reset count, so it stays unknown")
     }
 
     func testParsesScreenWithoutSpacesAndWithControlCodes() throws {
@@ -84,9 +83,10 @@ final class ClaudeUsageParserTests: XCTestCase {
     }
 
     func testResetCreditCountWhenTheScreenShowsOne() {
-        XCTAssertEqual(ClaudeUsageParser.resetCredits(in: "Limit resets\n 2 resets available").availableCount, 2)
-        XCTAssertEqual(ClaudeUsageParser.resetCredits(in: "1 limit reset left").availableCount, 1)
-        XCTAssertEqual(ClaudeUsageParser.resetCredits(in: "Resets 11:40am (Africa/Algiers)").availableCount, 0)
+        XCTAssertEqual(ClaudeUsageParser.resetCredits(in: "Limit resets\n 2 resets available")?.availableCount, 2)
+        XCTAssertEqual(ClaudeUsageParser.resetCredits(in: "1 limit reset left")?.availableCount, 1)
+        XCTAssertNil(ClaudeUsageParser.resetCredits(in: "Resets 11:40am (Africa/Algiers)"))
+        XCTAssertEqual(ClaudeUsageParser.cliVersion(in: "Welcome to Claude Code v2.1.322"), "2.1.322")
     }
 
     func testPercentLeftWording() {
@@ -132,5 +132,50 @@ final class ClaudeUsageParserTests: XCTestCase {
         XCTAssertEqual(UsageProvider.matching(bundleIdentifier: "com.openai.chat"), .codex)
         XCTAssertNil(UsageProvider.matching(bundleIdentifier: "com.apple.Terminal"))
         XCTAssertNil(UsageProvider.matching(bundleIdentifier: nil))
+    }
+
+    // MARK: Reset credits from the usage endpoint
+
+    private func endpointCredits(_ json: String) throws -> ResetCredits {
+        let object = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
+        return try ClaudeResetCreditsReader.credits(fromUsageResponse: object, now: now)
+    }
+
+    func testEndpointCountsAvailableGrantsWithExpiry() throws {
+        let credits = try endpointCredits(#"""
+        {"five_hour":{"utilization":10},"cedar_ember":{"eligible":true,"grants":[
+          {"resets_left":2,"resets_total":2,"starts_at":"2026-10-01T00:00:00Z","ends_at":"2026-12-01T00:00:00.000Z","paused":false},
+          {"resets_left":1,"resets_total":1,"starts_at":null,"ends_at":"2026-10-01T00:00:00Z","paused":false},
+          {"resets_left":3,"resets_total":3,"paused":true},
+          {"resets_left":1,"starts_at":"2027-01-01T00:00:00Z","paused":false},
+          {"resets_left":1}
+        ]}}
+        """#)
+        XCTAssertEqual(credits.availableCount, 2, "Only the active, unpaused grant counts")
+        XCTAssertEqual(credits.label, "2 resets")
+        XCTAssertEqual(credits.credits?.first?.expiresAt, ClaudeResetCreditsReader.parseDate("2026-12-01T00:00:00Z")?.timeIntervalSince1970)
+        XCTAssertTrue(credits.hoverDetails.contains("Reset 2: expires"))
+    }
+
+    func testEndpointIneligibleOrEmptyMeansZero() throws {
+        XCTAssertEqual(try endpointCredits(#"{"cedar_ember":{"eligible":false}}"#).availableCount, 0)
+        XCTAssertEqual(try endpointCredits(#"{"cedar_ember":{"eligible":true,"grants":[]}}"#).availableCount, 0)
+    }
+
+    func testEndpointWithoutInventoryIsUnknown() {
+        XCTAssertThrowsError(try endpointCredits(#"{"five_hour":{"utilization":10}}"#))
+    }
+
+    func testCreditCacheReusesReadingsAndBacksOffAfterRateLimit() {
+        let cache = ClaudeResetCreditsReader.CreditCache()
+        let two = ResetCredits(availableCount: 2, credits: nil)
+        var calls = 0
+        XCTAssertEqual(cache.value(now: now) { calls += 1; return two }?.availableCount, 2)
+        XCTAssertEqual(cache.value(now: now.addingTimeInterval(60)) { calls += 1; return two }?.availableCount, 2)
+        XCTAssertEqual(calls, 1, "Reused within 10 minutes")
+        let later = now.addingTimeInterval(700)
+        XCTAssertEqual(cache.value(now: later) { calls += 1; throw ClaudeResetCreditsReader.ReadError.http(429) }?.availableCount, 2)
+        XCTAssertEqual(cache.value(now: later.addingTimeInterval(60)) { calls += 1; return two }?.availableCount, 2)
+        XCTAssertEqual(calls, 2, "Waits 5 minutes after a 429")
     }
 }

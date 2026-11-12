@@ -22,7 +22,7 @@ struct ResetCredits: Decodable {
             .prefix(availableCount)
 
         guard !available.isEmpty else {
-            return (lines + ["Expiry dates were not provided by Codex."]).joined(separator: "\n")
+            return (lines + ["Expiry dates were not provided."]).joined(separator: "\n")
         }
         for (index, credit) in available.enumerated() {
             if let expiry = credit.expiresAt, expiry.isFinite {
