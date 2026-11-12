@@ -6,6 +6,22 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Service") {
+                Picker("Show", selection: Binding(
+                    get: { controller.providerMode },
+                    set: controller.setProviderMode
+                )) {
+                    ForEach(ProviderMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Text("Auto shows Claude when the Claude app is in front and Codex when the Codex app is. Other apps keep the last one shown.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Widget") {
                 Picker("Size", selection: Binding(
                     get: { controller.size },
@@ -16,6 +32,20 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.menu)
+
+                Picker("Background", selection: Binding(
+                    get: { controller.backgroundMode },
+                    set: controller.setBackgroundMode
+                )) {
+                    ForEach(WidgetBackgroundMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Text("Choose when the glass panel appears.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Updates") {
@@ -42,20 +72,26 @@ struct SettingsView: View {
                 .disabled(SMAppService.mainApp.status == .requiresApproval)
 
                 if SMAppService.mainApp.status == .requiresApproval {
-                    Text("Allow Codex Usage in System Settings → General → Login Items.")
+                    Text("Allow AI Usage in System Settings → General → Login Items.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Section("Codex") {
+            Section("Sources") {
                 HStack {
-                    Text("Usage source")
+                    Text("Codex")
                     Spacer()
                     Text("Signed-in Codex CLI")
                         .foregroundStyle(.secondary)
                 }
-                Button("Refresh usage now") { controller.refresh() }
+                HStack {
+                    Text("Claude")
+                    Spacer()
+                    Text("Signed-in Claude Code CLI (/usage)")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Refresh \(controller.provider.label) usage now") { controller.refresh() }
                     .disabled(controller.isRefreshing)
             }
         }

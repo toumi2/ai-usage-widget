@@ -15,6 +15,7 @@ struct UsageWindow: Decodable {
 struct UsageSnapshot {
     let weekly: UsageWindow?
     let fiveHour: UsageWindow?
+    let resetCredits: ResetCredits?
     let updatedAt: Date
 }
 
@@ -26,26 +27,32 @@ enum UsageState {
 
 enum WidgetSize: String, CaseIterable, Identifiable {
     case tiny
-    case small
-    case compact
-    case regular
-    case large
+    case mini
+    case micro
+    case nano
+    case pico
 
     var id: String { rawValue }
     var label: String { rawValue.capitalized }
 
-    var dimensions: CGSize {
+    /// Tiny is the full-size layout; the smaller sizes shrink it evenly.
+    var scale: CGFloat {
         switch self {
-        case .tiny: return CGSize(width: 240, height: 78)
-        case .small: return CGSize(width: 264, height: 82)
-        case .compact: return CGSize(width: 286, height: 86)
-        case .regular: return CGSize(width: 326, height: 96)
-        case .large: return CGSize(width: 376, height: 112)
+        case .tiny: return 1.0
+        case .mini: return 0.9
+        case .micro: return 0.8
+        case .nano: return 0.7
+        case .pico: return 0.6
         }
     }
 
+    var dimensions: CGSize {
+        CGSize(width: (240 * scale).rounded(), height: (78 * scale).rounded())
+    }
+
+    /// Older saved sizes (Small through Large) were all bigger than Tiny, so they map to Tiny.
     static var current: WidgetSize {
-        WidgetSize(rawValue: UserDefaults.standard.string(forKey: "widget.size") ?? "regular") ?? .regular
+        WidgetSize(rawValue: UserDefaults.standard.string(forKey: "widget.size") ?? "tiny") ?? .tiny
     }
 }
 
@@ -72,26 +79,55 @@ enum RefreshInterval: Int, CaseIterable, Identifiable {
     }
 }
 
+enum WidgetBackgroundMode: String, CaseIterable, Identifiable {
+    case onHover
+    case always
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .onHover: return "On hover"
+        case .always: return "Always"
+        }
+    }
+
+    static var current: WidgetBackgroundMode {
+        WidgetBackgroundMode(rawValue: UserDefaults.standard.string(forKey: "widget.backgroundMode") ?? "onHover") ?? .onHover
+    }
+}
+
 @MainActor
 final class UsageController: ObservableObject {
     static let shared = UsageController()
 
-    @Published private(set) var state: UsageState = .loading
-    @Published var isRefreshing = false
+    @Published private(set) var states: [UsageProvider: UsageState] = [:]
+    @Published private(set) var refreshing: Set<UsageProvider> = []
+    @Published private(set) var provider: UsageProvider
+    @Published private(set) var providerMode = ProviderMode.current
     @Published var size = WidgetSize.current
     @Published private(set) var refreshInterval = RefreshInterval.current
+    @Published private(set) var backgroundMode = WidgetBackgroundMode.current
     @Published private(set) var startupEnabled = SMAppService.mainApp.status == .enabled
 
     var onSizeChange: ((WidgetSize) -> Void)?
-    private var refreshTask: Task<Void, Never>?
+    private var refreshTasks: [UsageProvider: Task<Void, Never>] = [:]
+    private var lastUpdated: [UsageProvider: Date] = [:]
     private var pollingTimer: Timer?
+    private var activationObserver: NSObjectProtocol?
+    private var automaticProvider = UsageProvider.lastAutomatic
     private var settingsWindow: NSWindow?
 #if DEBUG
     private(set) var isScreenshotPreview = false
 #endif
 
+    var state: UsageState { states[provider] ?? .loading }
+    var isRefreshing: Bool { refreshing.contains(provider) }
+
     private init() {
+        provider = ProviderMode.current.fixedProvider ?? UsageProvider.lastAutomatic
         schedulePolling()
+        observeFrontmostApp()
     }
 
     private func schedulePolling() {
@@ -99,6 +135,45 @@ final class UsageController: ObservableObject {
         pollingTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval.seconds, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refresh() }
         }
+    }
+
+    /// In Auto mode, follows Codex or Claude when either app comes to the front.
+    private func observeFrontmostApp() {
+        if let front = NSWorkspace.shared.frontmostApplication,
+           let match = UsageProvider.matching(bundleIdentifier: front.bundleIdentifier) {
+            automaticProvider = match
+            if providerMode == .automatic { provider = match }
+        }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard let match = UsageProvider.matching(bundleIdentifier: app?.bundleIdentifier) else { return }
+            Task { @MainActor [weak self] in self?.frontAppChanged(to: match) }
+        }
+    }
+
+    private func frontAppChanged(to match: UsageProvider) {
+        automaticProvider = match
+        UserDefaults.standard.set(match.rawValue, forKey: "widget.lastProvider")
+        guard providerMode == .automatic else { return }
+        show(match)
+    }
+
+    private func show(_ newProvider: UsageProvider) {
+#if DEBUG
+        if isScreenshotPreview { provider = newProvider; return }
+#endif
+        guard newProvider != provider else { return }
+        provider = newProvider
+        if isStale(newProvider) { refresh() }
+    }
+
+    func isStale(_ provider: UsageProvider) -> Bool {
+        guard let updated = lastUpdated[provider] else { return true }
+        return Date().timeIntervalSince(updated) > refreshInterval.seconds
     }
 
     func showSettings() {
@@ -109,12 +184,12 @@ final class UsageController: ObservableObject {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 490),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 560),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Codex Usage Settings"
+        window.title = "AI Usage Settings"
         window.isReleasedWhenClosed = false
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView(controller: self))
@@ -123,27 +198,40 @@ final class UsageController: ObservableObject {
         settingsWindow = window
     }
 
+    /// Refreshes the provider the widget is showing.
     func refresh() {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        if case .available = state {
-            // Keep the last reading visible while Codex returns the next one.
+        refresh(provider)
+    }
+
+    func refresh(_ target: UsageProvider) {
+#if DEBUG
+        if isScreenshotPreview { return }
+#endif
+        guard !refreshing.contains(target) else { return }
+        refreshing.insert(target)
+        if case .available = states[target] {
+            // Keep the last reading visible while the next one loads.
         } else {
-            state = .loading
+            states[target] = .loading
         }
-        refreshTask?.cancel()
-        refreshTask = Task { [weak self] in
+        refreshTasks[target]?.cancel()
+        refreshTasks[target] = Task { [weak self] in
             do {
-                let snapshot = try await Task.detached(priority: .utility) {
-                    try CodexAppServerReader().readRateLimits()
+                let snapshot = try await Task.detached(priority: .utility) { () throws -> UsageSnapshot in
+                    switch target {
+                    case .codex: return try CodexAppServerReader().readRateLimits()
+                    case .claude: return try ClaudeUsageReader().readUsage()
+                    }
                 }.value
                 guard !Task.isCancelled else { return }
-                self?.state = .available(snapshot)
+                self?.states[target] = .available(snapshot)
+                self?.lastUpdated[target] = snapshot.updatedAt
             } catch {
                 guard !Task.isCancelled else { return }
-                self?.state = .unavailable(error.localizedDescription)
+                self?.states[target] = .unavailable(error.localizedDescription)
+                self?.lastUpdated[target] = Date()
             }
-            self?.isRefreshing = false
+            self?.refreshing.remove(target)
         }
     }
 
@@ -152,11 +240,22 @@ final class UsageController: ObservableObject {
         pollingTimer?.invalidate()
         pollingTimer = nil
         isScreenshotPreview = true
-        size = .regular
+        size = .tiny
         let now = Date()
-        state = .available(UsageSnapshot(
+        states[.claude] = .available(UsageSnapshot(
+            weekly: UsageWindow(usedPercent: 38, windowDurationMins: 10_080, resetsAt: now.addingTimeInterval(3 * 86_400).timeIntervalSince1970),
+            fiveHour: UsageWindow(usedPercent: 71, windowDurationMins: 300, resetsAt: now.addingTimeInterval(2 * 3_600).timeIntervalSince1970),
+            resetCredits: nil,
+            updatedAt: now
+        ))
+        if CommandLine.arguments.contains("--claude") { provider = .claude } else { provider = .codex }
+        states[.codex] = .available(UsageSnapshot(
             weekly: UsageWindow(usedPercent: 64, windowDurationMins: 10_080, resetsAt: now.addingTimeInterval(4 * 86_400).timeIntervalSince1970),
             fiveHour: UsageWindow(usedPercent: 27, windowDurationMins: 300, resetsAt: now.addingTimeInterval(5 * 3_600).timeIntervalSince1970),
+            resetCredits: ResetCredits(availableCount: 2, credits: [
+                ResetCredit(status: "available", expiresAt: now.addingTimeInterval(7 * 86_400).timeIntervalSince1970),
+                ResetCredit(status: "available", expiresAt: now.addingTimeInterval(14 * 86_400).timeIntervalSince1970)
+            ]),
             updatedAt: now
         ))
     }
@@ -173,6 +272,17 @@ final class UsageController: ObservableObject {
         refreshInterval = interval
         UserDefaults.standard.set(interval.rawValue, forKey: "widget.refreshInterval")
         schedulePolling()
+    }
+
+    func setProviderMode(_ mode: ProviderMode) {
+        providerMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: "widget.providerMode")
+        show(mode.fixedProvider ?? automaticProvider)
+    }
+
+    func setBackgroundMode(_ mode: WidgetBackgroundMode) {
+        backgroundMode = mode
+        UserDefaults.standard.set(mode.rawValue, forKey: "widget.backgroundMode")
     }
 
     func setStartupEnabled(_ enabled: Bool) {
@@ -210,7 +320,7 @@ private enum UsageReaderError: LocalizedError {
     }
 }
 
-private struct CodexAppServerReader {
+struct CodexAppServerReader {
 
     func readRateLimits() throws -> UsageSnapshot {
         let codexURL = locateCodex()
@@ -245,7 +355,7 @@ private struct CodexAppServerReader {
         let reader = LineReader(handle: output.fileHandleForReading)
         do {
             try write(["method": "initialize", "id": 1, "params": [
-                "clientInfo": ["name": "codex-usage-widget", "version": "1.0.0"],
+                "clientInfo": ["name": "ai-usage-widget", "version": "1.1.0"],
                 "capabilities": ["experimentalApi": true]
             ]], to: input)
             _ = try reader.readResponse(id: 1)
@@ -310,7 +420,10 @@ private struct CodexAppServerReader {
         let weekly = windows.first { ($0.windowDurationMins ?? 0) >= 1_440 }
         let fiveHour = windows.first { ($0.windowDurationMins ?? 0) > 0 && ($0.windowDurationMins ?? 0) < 1_440 }
         guard weekly != nil || fiveHour != nil else { throw UsageReaderError.missingLimits }
-        return UsageSnapshot(weekly: weekly, fiveHour: fiveHour, updatedAt: Date())
+        let resetCredits = (result["rateLimitResetCredits"] as? [String: Any])
+            .flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+            .flatMap { try? JSONDecoder().decode(ResetCredits.self, from: $0) }
+        return UsageSnapshot(weekly: weekly, fiveHour: fiveHour, resetCredits: resetCredits, updatedAt: Date())
     }
 }
 

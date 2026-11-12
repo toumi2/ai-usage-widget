@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.1.0}"
 BUILD_ROOT="$ROOT/.build/release-$VERSION"
 RELEASE_DIR="$ROOT/build/release"
-APP_NAME="Codex Usage.app"
+APP_NAME="AI Usage.app"
 
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "Usage: $0 <version> (for example: 1.0.0)" >&2
@@ -32,7 +32,7 @@ lipo -create \
 codesign --force --deep --sign - "$UNIVERSAL_APP"
 codesign --verify --deep --strict "$UNIVERSAL_APP"
 
-ARCHIVE="$RELEASE_DIR/Codex-Usage-$VERSION-macos-universal.zip"
+ARCHIVE="$RELEASE_DIR/AI-Usage-$VERSION-macos-universal.zip"
 ditto -c -k --sequesterRsrc --keepParent "$UNIVERSAL_APP" "$ARCHIVE"
 shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
 echo "Created $ARCHIVE"

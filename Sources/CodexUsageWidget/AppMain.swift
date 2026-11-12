@@ -7,6 +7,21 @@ enum CodexUsageWidgetApp {
     private static var delegate: AppDelegate?
 
     static func main() {
+#if DEBUG
+        if CommandLine.arguments.contains("--probe-claude") {
+            // Debug aid: read Claude usage once, print it and exit.
+            do {
+                let snapshot = try ClaudeUsageReader().readUsage()
+                print("5 hour: \(snapshot.fiveHour.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { Date(timeIntervalSince1970: $0) }.map(String.init(describing:)) ?? "?")" } ?? "none")")
+                print("Resets: \(snapshot.resetCredits.map { "\($0.availableCount)\n" + $0.hoverDetails } ?? "unknown")")
+                print("Weekly: \(snapshot.weekly.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { Date(timeIntervalSince1970: $0) }.map(String.init(describing:)) ?? "?")" } ?? "none")")
+                exit(0)
+            } catch {
+                print("Error: \(error.localizedDescription)")
+                exit(1)
+            }
+        }
+#endif
         let application = NSApplication.shared
         delegate = AppDelegate()
         application.delegate = delegate
@@ -55,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Codex Usage"
+        window.title = "AI Usage"
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
@@ -85,8 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Codex Usage")
-        item.button?.toolTip = "Codex Usage"
+        item.button?.image = StatusBarIcon.makeImage()
+        item.button?.toolTip = "AI Usage"
 
         let menu = NSMenu()
         let show = NSMenuItem(title: "Show Widget", action: #selector(showWidget), keyEquivalent: "")
@@ -102,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(settings)
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: "Quit Codex Usage", action: #selector(quitApp), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit AI Usage", action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
