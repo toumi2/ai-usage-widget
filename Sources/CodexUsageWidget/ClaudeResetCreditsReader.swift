@@ -14,8 +14,8 @@ struct ClaudeResetCreditsReader {
 
     private static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
-    /// Reset credits change rarely and the endpoint rate-limits, so reuse a reading for 10 minutes
-    /// and back off for 5 minutes after a 429.
+    /// Reset credits change rarely and the endpoint rate-limits, so reuse a reading for 30 minutes
+    /// and back off for 10 minutes after a 429.
     private static let cache = CreditCache(defaults: .standard)
 
     func cachedCredits(cliVersion: String?) -> ResetCredits? {
@@ -44,6 +44,11 @@ struct ClaudeResetCreditsReader {
                 guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     throw ReadError.unreadable
                 }
+#if DEBUG
+                if ProcessInfo.processInfo.environment["CODEX_USAGE_DEBUG_CREDITS"] != nil {
+                    print("cedar_ember:", object["cedar_ember"].map { String(describing: $0) } ?? "missing", "keys:", object.keys.sorted())
+                }
+#endif
                 return try Self.credits(fromUsageResponse: object)
             }
             if status != 400 && status != 403 { break }
@@ -79,7 +84,7 @@ struct ClaudeResetCreditsReader {
             // A saved reading older than a day is too stale to show.
             if now.timeIntervalSince(fetchedAt) > 86_400 { last = nil }
             let cached = last
-            let fresh = now.timeIntervalSince(fetchedAt) < 600
+            let fresh = now.timeIntervalSince(fetchedAt) < 1_800
             let waiting = now < retryAfter
             lock.unlock()
             if fresh || waiting { return cached }
@@ -115,6 +120,10 @@ struct ClaudeResetCreditsReader {
     static func credits(fromUsageResponse object: [String: Any], now: Date = Date()) throws -> ResetCredits {
         guard let block = object["cedar_ember"] as? [String: Any] else { throw ReadError.unreadable }
         if let eligible = block["eligible"] as? Bool, eligible == false {
+            // "cli_version" means the request looked like an old CLI, not that there are no resets.
+            if let reason = block["ineligible_reason"] as? String, reason == "cli_version" {
+                throw ReadError.unreadable
+            }
             return ResetCredits(availableCount: 0, credits: [])
         }
         let grants = block["grants"] as? [[String: Any]] ?? []

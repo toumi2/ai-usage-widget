@@ -159,6 +159,8 @@ final class ClaudeUsageParserTests: XCTestCase {
 
     func testEndpointIneligibleOrEmptyMeansZero() throws {
         XCTAssertEqual(try endpointCredits(#"{"cedar_ember":{"eligible":false}}"#).availableCount, 0)
+        XCTAssertThrowsError(try endpointCredits(#"{"cedar_ember":{"eligible":false,"ineligible_reason":"cli_version","grants":[]}}"#),
+                             "An outdated-CLI answer is unknown, not zero")
         XCTAssertEqual(try endpointCredits(#"{"cedar_ember":{"eligible":true,"grants":[]}}"#).availableCount, 0)
     }
 
@@ -172,8 +174,8 @@ final class ClaudeUsageParserTests: XCTestCase {
         var calls = 0
         XCTAssertEqual(cache.value(now: now) { calls += 1; return two }?.availableCount, 2)
         XCTAssertEqual(cache.value(now: now.addingTimeInterval(60)) { calls += 1; return two }?.availableCount, 2)
-        XCTAssertEqual(calls, 1, "Reused within 10 minutes")
-        let later = now.addingTimeInterval(700)
+        XCTAssertEqual(calls, 1, "Reused within 30 minutes")
+        let later = now.addingTimeInterval(1_900)
         XCTAssertEqual(cache.value(now: later) { calls += 1; throw ClaudeResetCreditsReader.ReadError.http(429) }?.availableCount, 2)
         XCTAssertEqual(cache.value(now: later.addingTimeInterval(60)) { calls += 1; return two }?.availableCount, 2)
         XCTAssertEqual(calls, 2, "Waits after a 429")
@@ -187,7 +189,7 @@ final class ClaudeUsageParserTests: XCTestCase {
             ResetCredits(availableCount: 2, credits: [ResetCredit(status: "available", expiresAt: expiry), ResetCredit(status: "available", expiresAt: nil)])
         }
         let restarted = ClaudeResetCreditsReader.CreditCache(defaults: defaults)
-        let rateLimited = restarted.value(now: now.addingTimeInterval(900)) { throw ClaudeResetCreditsReader.ReadError.http(429) }
+        let rateLimited = restarted.value(now: now.addingTimeInterval(1_900)) { throw ClaudeResetCreditsReader.ReadError.http(429) }
         XCTAssertEqual(rateLimited?.availableCount, 2, "Shows the last known count when rate limited")
         XCTAssertEqual(rateLimited?.credits?.first?.expiresAt, expiry)
         XCTAssertNil(rateLimited?.credits?.last?.expiresAt)

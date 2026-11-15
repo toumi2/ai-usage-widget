@@ -33,7 +33,7 @@ struct ClaudeUsageReader {
         let snapshot = try ClaudeUsageParser.parse(screen: screen, now: Date())
         // The CLI doesn't show reset credits, so ask the usage endpoint. If that fails,
         // keep whatever the screen showed (usually nothing, which displays as "Resets —").
-        let version = ClaudeUsageParser.cliVersion(in: screen)
+        let version = Self.cliVersion(claudeURL: claudeURL) ?? ClaudeUsageParser.cliVersion(in: screen)
         guard let credits = ClaudeResetCreditsReader().cachedCredits(cliVersion: version) else { return snapshot }
         return UsageSnapshot(weekly: snapshot.weekly, fiveHour: snapshot.fiveHour, resetCredits: credits, updatedAt: snapshot.updatedAt)
     }
@@ -55,6 +55,28 @@ struct ClaudeUsageReader {
             candidates += path.split(separator: ":").map { "\($0)/claude" }
         }
         return candidates.map(URL.init(fileURLWithPath:)).first { fileManager.isExecutableFile(atPath: $0.path) }
+    }
+
+    /// The installed CLI's version ("2.1.322"), from `claude --version`.
+    /// The usage service only reports reset credits to current CLI versions.
+    static func cliVersion(claudeURL: URL) -> String? {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = claudeURL
+        process.arguments = ["--version"]
+        process.environment = cliEnvironment(claudeURL: claudeURL)
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let timer = DispatchWorkItem { if process.isRunning { process.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: timer)
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        timer.cancel()
+        let text = String(decoding: data, as: UTF8.self)
+        guard let range = text.range(of: #"\d+\.\d+\.\d+"#, options: .regularExpression) else { return nil }
+        return String(text[range])
     }
 
     /// The CLI finds its saved login by user name, so make sure USER and LOGNAME are set.
