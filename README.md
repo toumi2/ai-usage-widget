@@ -44,7 +44,7 @@ No analytics or telemetry are added by this app, and it never writes or stores c
 
 - **Codex:** the app asks the locally installed Codex CLI app-server for account rate limits. The CLI uses its existing sign-in and handles its own connection.
 - **Claude:** the app runs the locally installed Claude Code CLI (`claude`) in a hidden terminal inside its own empty folder, opens `/usage`, reads the 5-hour and weekly percentages and reset times, then closes it. No prompt is sent to the model, and no tools, hooks or MCP servers are enabled. If a future CLI version changes the `/usage` screen, the Claude bars may show as unavailable until the app is updated.
-- **Claude reset credits:** the CLI doesn't show these, so the app reads Claude Code's saved login from the macOS Keychain (read-only; macOS asks you once to allow it) and asks Anthropic's usage endpoint for the count, at most every 10 minutes. The login is only sent to `api.anthropic.com`. This endpoint isn't publicly documented; if it fails, the header shows `Resets —`.
+- **Claude reset credits:** the CLI doesn't show these, so the app reads Claude Code's saved login from the macOS Keychain, read-only, through Apple's `security` tool (the same way Claude Code reads it, so there's no permission prompt) and asks Anthropic's usage endpoint for the count, at most every 10 minutes. The login is only sent to `api.anthropic.com`. This endpoint isn't publicly documented; if it fails, the header shows `Resets —`.
 
 Availability and reset times depend on the data returned for the signed-in account; a window may be unavailable for some plans.
 

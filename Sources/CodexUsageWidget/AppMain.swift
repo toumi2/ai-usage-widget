@@ -15,6 +15,11 @@ enum CodexUsageWidgetApp {
                 print("5 hour: \(snapshot.fiveHour.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { Date(timeIntervalSince1970: $0) }.map(String.init(describing:)) ?? "?")" } ?? "none")")
                 print("Resets: \(snapshot.resetCredits.map { "\($0.availableCount)\n" + $0.hoverDetails } ?? "unknown")")
                 print("Weekly: \(snapshot.weekly.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { Date(timeIntervalSince1970: $0) }.map(String.init(describing:)) ?? "?")" } ?? "none")")
+                if snapshot.resetCredits == nil {
+                    do { _ = try ClaudeResetCreditsReader().readCredits(cliVersion: nil) } catch {
+                        print("Reset credits unavailable: \(error)")
+                    }
+                }
                 exit(0)
             } catch {
                 print("Error: \(error.localizedDescription)")

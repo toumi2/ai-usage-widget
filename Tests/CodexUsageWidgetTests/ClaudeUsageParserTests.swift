@@ -176,6 +176,23 @@ final class ClaudeUsageParserTests: XCTestCase {
         let later = now.addingTimeInterval(700)
         XCTAssertEqual(cache.value(now: later) { calls += 1; throw ClaudeResetCreditsReader.ReadError.http(429) }?.availableCount, 2)
         XCTAssertEqual(cache.value(now: later.addingTimeInterval(60)) { calls += 1; return two }?.availableCount, 2)
-        XCTAssertEqual(calls, 2, "Waits 5 minutes after a 429")
+        XCTAssertEqual(calls, 2, "Waits after a 429")
+    }
+
+    func testCreditCacheSurvivesRestart() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClaudeCreditCacheTest"))
+        defaults.removePersistentDomain(forName: "ClaudeCreditCacheTest")
+        let expiry = now.addingTimeInterval(86_400).timeIntervalSince1970
+        _ = ClaudeResetCreditsReader.CreditCache(defaults: defaults).value(now: now) {
+            ResetCredits(availableCount: 2, credits: [ResetCredit(status: "available", expiresAt: expiry), ResetCredit(status: "available", expiresAt: nil)])
+        }
+        let restarted = ClaudeResetCreditsReader.CreditCache(defaults: defaults)
+        let rateLimited = restarted.value(now: now.addingTimeInterval(900)) { throw ClaudeResetCreditsReader.ReadError.http(429) }
+        XCTAssertEqual(rateLimited?.availableCount, 2, "Shows the last known count when rate limited")
+        XCTAssertEqual(rateLimited?.credits?.first?.expiresAt, expiry)
+        XCTAssertNil(rateLimited?.credits?.last?.expiresAt)
+        let stale = ClaudeResetCreditsReader.CreditCache(defaults: defaults)
+        XCTAssertNil(stale.value(now: now.addingTimeInterval(2 * 86_400)) { throw ClaudeResetCreditsReader.ReadError.http(429) })
+        defaults.removePersistentDomain(forName: "ClaudeCreditCacheTest")
     }
 }

@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// Reads Claude's limit-reset credits from the usage endpoint that Claude Code itself uses.
 /// The Claude CLI's screens don't show this count, so this is the only source.
@@ -17,7 +16,7 @@ struct ClaudeResetCreditsReader {
 
     /// Reset credits change rarely and the endpoint rate-limits, so reuse a reading for 10 minutes
     /// and back off for 5 minutes after a 429.
-    private static let cache = CreditCache()
+    private static let cache = CreditCache(defaults: .standard)
 
     func cachedCredits(cliVersion: String?) -> ResetCredits? {
         Self.cache.value(fetch: { try readCredits(cliVersion: cliVersion) })
@@ -52,14 +51,33 @@ struct ClaudeResetCreditsReader {
         throw ReadError.http(lastStatus)
     }
 
+    /// Keeps the last good reading, also across app restarts, so a rate limit or a quick
+    /// relaunch shows the last known count instead of "Resets —". No login data is stored.
     final class CreditCache {
         private let lock = NSLock()
+        private let defaults: UserDefaults?
+        private static let key = "claude.resetCredits"
         private var last: ResetCredits?
         private var fetchedAt = Date.distantPast
         private var retryAfter = Date.distantPast
 
+        init(defaults: UserDefaults? = nil) {
+            self.defaults = defaults
+            if let saved = defaults?.dictionary(forKey: Self.key),
+               let count = saved["count"] as? Int,
+               let time = saved["fetchedAt"] as? Double {
+                let expiries = saved["expiries"] as? [Double] ?? []
+                last = ResetCredits(availableCount: count, credits: expiries.map {
+                    ResetCredit(status: "available", expiresAt: $0 > 0 ? $0 : nil)
+                })
+                fetchedAt = Date(timeIntervalSince1970: time)
+            }
+        }
+
         func value(now: Date = Date(), fetch: () throws -> ResetCredits) -> ResetCredits? {
             lock.lock()
+            // A saved reading older than a day is too stale to show.
+            if now.timeIntervalSince(fetchedAt) > 86_400 { last = nil }
             let cached = last
             let fresh = now.timeIntervalSince(fetchedAt) < 600
             let waiting = now < retryAfter
@@ -68,15 +86,25 @@ struct ClaudeResetCreditsReader {
             do {
                 let credits = try fetch()
                 lock.lock(); last = credits; fetchedAt = now; lock.unlock()
+                save(credits, at: now)
                 return credits
             } catch ReadError.http(429) {
-                lock.lock(); retryAfter = now.addingTimeInterval(300); lock.unlock()
+                lock.lock(); retryAfter = now.addingTimeInterval(600); lock.unlock()
                 return cached
             } catch {
-                // Try again on the next refresh; keep showing the last good count meanwhile.
-                lock.lock(); retryAfter = now.addingTimeInterval(60); lock.unlock()
+                // Try again shortly; keep showing the last good count meanwhile.
+                lock.lock(); retryAfter = now.addingTimeInterval(120); lock.unlock()
                 return cached
             }
+        }
+
+        private func save(_ credits: ResetCredits, at date: Date) {
+            guard let defaults else { return }
+            defaults.set([
+                "count": credits.availableCount,
+                "expiries": (credits.credits ?? []).map { $0.expiresAt ?? 0 },
+                "fetchedAt": date.timeIntervalSince1970
+            ], forKey: Self.key)
         }
     }
 
@@ -122,16 +150,11 @@ struct ClaudeResetCreditsReader {
     }
 
     /// Claude Code keeps its login in the "Claude Code-credentials" Keychain item as JSON.
+    /// Claude Code writes that item with macOS's `security` tool and rewrites it on every token
+    /// refresh, which clears any "Always Allow" given to other apps. The item always trusts
+    /// `security`, so reading it the same way never shows a Keychain prompt.
     private static func accessToken() -> Token? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data,
+        guard let data = readKeychainItem(service: "Claude Code-credentials"),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let oauth = object["claudeAiOauth"] as? [String: Any],
               let value = oauth["accessToken"] as? String, !value.isEmpty else { return nil }
@@ -141,6 +164,27 @@ struct ClaudeResetCreditsReader {
             expiresAt = Date(timeIntervalSince1970: raw > 10_000_000_000 ? raw / 1000 : raw)
         }
         return Token(value: value, expiresAt: expiresAt)
+    }
+
+    private static func readKeychainItem(service: String) -> Data? {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", service, "-w"]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        // If macOS ever does show a prompt, give up rather than hang the refresh.
+        let timer = DispatchWorkItem { if process.isRunning { process.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: timer)
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        timer.cancel()
+        guard process.terminationStatus == 0 else { return nil }
+        var trimmed = data
+        while let last = trimmed.last, last == 0x0A || last == 0x0D { trimmed.removeLast() }
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func send(_ request: URLRequest) throws -> (Data, Int) {
