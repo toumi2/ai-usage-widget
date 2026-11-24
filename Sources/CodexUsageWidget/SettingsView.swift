@@ -88,7 +88,7 @@ struct SettingsView: View {
                 HStack {
                     Text("Claude")
                     Spacer()
-                    Text("Signed-in Claude Code CLI (/usage)")
+                    Text("Claude Code login (usage API, no tokens)")
                         .foregroundStyle(.secondary)
                 }
                 Button("Refresh \(controller.provider.label) usage now") { controller.refresh() }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 — 2026-11-24
+
+- Read Claude's 5-hour and weekly limits straight from Anthropic's usage endpoint with Claude Code's saved login. The widget no longer starts the Claude CLI or types `/usage`, so it can never send a prompt or use tokens (a broken `~/.claude/settings.json` had made the old probe send thousands of "fix my settings" prompts).
+- Ask the endpoint at most about once a minute, wait 10 minutes after a rate limit, and keep the last reading (also across restarts, for up to a day) when the login has expired or the service is unreachable.
+
 ## 1.1.0 — 2026-10-30
 
 - Rename the app from Codex Usage to **AI Usage**; settings, position and the login item identity carry over.

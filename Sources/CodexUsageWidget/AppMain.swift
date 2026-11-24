@@ -8,30 +8,17 @@ enum CodexUsageWidgetApp {
 
     static func main() {
 #if DEBUG
-        if CommandLine.arguments.contains("--probe-claude-credits") {
-            // Debug aid: call only the usage endpoint, without running the CLI.
-            do {
-                let version = ClaudeUsageReader.locateClaude().flatMap(ClaudeUsageReader.cliVersion(claudeURL:))
-                print("CLI version: \(version ?? "unknown")")
-                let credits = try ClaudeResetCreditsReader().readCredits(cliVersion: version)
-                print("Resets: \(credits.availableCount)\n\(credits.hoverDetails)")
-            } catch {
-                print("Reset credits unavailable: \(error)")
-            }
-            exit(0)
-        }
         if CommandLine.arguments.contains("--probe-claude") {
-            // Debug aid: read Claude usage once, print it and exit.
+            // Debug aid: read Claude usage once from the usage endpoint, print it and exit.
+            func describe(_ window: UsageWindow?) -> String {
+                window.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { String(describing: Date(timeIntervalSince1970: $0)) } ?? "?")" } ?? "none"
+            }
             do {
-                let snapshot = try ClaudeUsageReader().readUsage()
-                print("5 hour: \(snapshot.fiveHour.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { Date(timeIntervalSince1970: $0) }.map(String.init(describing:)) ?? "?")" } ?? "none")")
+                print("CLI version: \(ClaudeUsageReader.cliVersion() ?? "unknown")")
+                let snapshot = try ClaudeUsageReader().fetchUsage()
+                print("5 hour: \(describe(snapshot.fiveHour))")
+                print("Weekly: \(describe(snapshot.weekly))")
                 print("Resets: \(snapshot.resetCredits.map { "\($0.availableCount)\n" + $0.hoverDetails } ?? "unknown")")
-                print("Weekly: \(snapshot.weekly.map { "\($0.usedPercent)% used, resets \($0.resetsAt.map { Date(timeIntervalSince1970: $0) }.map(String.init(describing:)) ?? "?")" } ?? "none")")
-                if snapshot.resetCredits == nil {
-                    do { _ = try ClaudeResetCreditsReader().readCredits(cliVersion: ClaudeUsageReader.locateClaude().flatMap(ClaudeUsageReader.cliVersion(claudeURL:))) } catch {
-                        print("Reset credits unavailable: \(error)")
-                    }
-                }
                 exit(0)
             } catch {
                 print("Error: \(error.localizedDescription)")

@@ -10,11 +10,11 @@ Made by [Mounir Toumi](https://toumi.us). AI Usage is an independent community p
 
 ## What's new in 1.1.0
 
-- **Claude support.** Shows your Claude plan's current session (5-hour) and weekly limits next to Codex, read from the Claude Code CLI you already have.
+- **Claude support.** Shows your Claude plan's current session (5-hour) and weekly limits next to Codex, read from Claude's usage API with the login Claude Code already saved. It never starts the CLI or sends a prompt, so checking costs no tokens.
 - **Follows the app you're using.** In Auto mode the widget shows Claude when the Claude app is in front and Codex when the Codex app is. Any other app keeps the last one shown. You can also pin it to Always Codex or Always Claude in Settings.
 - **Smaller sizes.** Tiny is now the largest size, followed by Mini, Micro, Nano and Pico, so the widget can sit in a corner almost unnoticed.
 - **Reset counts for both services.** The header shows which service you're looking at and its reset credits, such as `Codex · 2 resets` or `Claude · 2 resets`. Hover for expiry dates.
-- **Clear sign-in hints.** If the Claude CLI isn't signed in, the header says so instead of showing empty bars.
+- **Clear sign-in hints.** If Claude Code isn't signed in, the header says so instead of showing empty bars. If its login has expired, the widget keeps the last reading until Claude Code renews it.
 - Plus everything since 1.0.1: Liquid Glass background, relative reset countdowns, a new app icon and a menu bar icon.
 
 ## Download
@@ -26,7 +26,7 @@ This release is ad-hoc signed and is not notarized by Apple. On first launch, ma
 ## Set up
 
 - **Codex:** install the Codex CLI (or the ChatGPT/Codex app that bundles it) and sign in.
-- **Claude:** install [Claude Code](https://docs.claude.com/en/docs/claude-code), then run `claude` once in Terminal and sign in with your Claude subscription. Signing in to the Claude desktop app alone is not enough, because the widget reads the CLI.
+- **Claude:** install [Claude Code](https://docs.claude.com/en/docs/claude-code), then run `claude` once in Terminal and sign in with your Claude subscription. Signing in to the Claude desktop app alone is not enough, because the widget uses Claude Code's saved login.
 
 ## Use the widget
 
@@ -43,8 +43,7 @@ This release is ad-hoc signed and is not notarized by Apple. On first launch, ma
 No analytics or telemetry are added by this app, and it never writes or stores credentials for either service.
 
 - **Codex:** the app asks the locally installed Codex CLI app-server for account rate limits. The CLI uses its existing sign-in and handles its own connection.
-- **Claude:** the app runs the locally installed Claude Code CLI (`claude`) in a hidden terminal inside its own empty folder, opens `/usage`, reads the 5-hour and weekly percentages and reset times, then closes it. No prompt is sent to the model, and no tools, hooks or MCP servers are enabled. If a future CLI version changes the `/usage` screen, the Claude bars may show as unavailable until the app is updated.
-- **Claude reset credits:** the CLI doesn't show these, so the app reads Claude Code's saved login from the macOS Keychain, read-only, through Apple's `security` tool (the same way Claude Code reads it, so there's no permission prompt) and asks Anthropic's usage endpoint for the count, at most every 30 minutes. The login is only sent to `api.anthropic.com`. This endpoint isn't publicly documented; if it fails, the header shows `Resets —`.
+- **Claude:** the app reads Claude Code's saved login from the macOS Keychain, read-only, through Apple's `security` tool (the same way Claude Code reads it, so there's no permission prompt), and asks Anthropic's usage endpoint for the 5-hour and weekly percentages, reset times and reset credits. It never starts the Claude CLI and never sends a prompt, so it uses no tokens. The login is only sent to `api.anthropic.com` and is never refreshed, stored or logged; when it expires the widget keeps the last reading until Claude Code renews it. The endpoint is asked at most about once a minute and isn't publicly documented; if it fails, the last reading stays on screen and the header shows `Resets —` when the count is unknown.
 
 Availability and reset times depend on the data returned for the signed-in account; a window may be unavailable for some plans.
 
