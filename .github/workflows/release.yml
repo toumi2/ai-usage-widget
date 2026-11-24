@@ -8,7 +8,7 @@ on:
       tag:
         description: Existing release tag to build and upload
         required: true
-        default: v1.0.0
+        default: v1.1.0
 
 permissions:
   contents: write
@@ -30,6 +30,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "$RELEASE_TAG" \
-            "build/release/Codex-Usage-${RELEASE_TAG#v}-macos-universal.zip" \
-            "build/release/Codex-Usage-${RELEASE_TAG#v}-macos-universal.zip.sha256" \
+            "build/release/AI-Usage-${RELEASE_TAG#v}-macos-universal.zip" \
+            "build/release/AI-Usage-${RELEASE_TAG#v}-macos-universal.zip.sha256" \
             --clobber

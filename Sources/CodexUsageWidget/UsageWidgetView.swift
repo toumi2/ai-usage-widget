@@ -6,40 +6,50 @@ struct UsageWidgetView: View {
     @State private var isHovered = false
 
     var body: some View {
-        VStack(spacing: isNarrow ? 2 : 5) {
-            HStack(spacing: 7) {
+        VStack(spacing: px(2)) {
+            HStack(spacing: px(7)) {
                 WindowDragHandle()
                     .frame(maxWidth: .infinity)
                     .overlay(alignment: .leading) {
-                        if isHovered {
-                            Image(systemName: "hand.draw")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .allowsHitTesting(false)
+                        HStack(spacing: px(6)) {
+                            Text(headerLabel)
+                                .font(.system(size: px(10), weight: .medium, design: .rounded).monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.82))
+                                .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
+                                .lineLimit(1)
+                            if isHovered {
+                                Image(systemName: "hand.draw")
+                                    .font(.system(size: px(12), weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.9))
+                            }
                         }
+                        .allowsHitTesting(false)
                     }
-                    .help("Drag to move")
+                    .help(resetCreditHelp)
                 if isHovered {
-                    controlButton("arrow.clockwise", label: "Refresh usage", action: controller.refresh)
+                    controlButton("arrow.clockwise", label: "Refresh usage") { controller.refresh() }
                     controlButton("slider.horizontal.3", label: "Settings") { controller.showSettings() }
-                    controlButton("xmark", label: "Quit Codex Usage") { NSApp.terminate(nil) }
+                    controlButton("xmark", label: "Quit AI Usage") { NSApp.terminate(nil) }
                 }
             }
-            .frame(height: 18)
+            .frame(height: px(18))
             usageRow(title: "Weekly", window: snapshot?.weekly)
             usageRow(title: "5 hour", window: snapshot?.fiveHour)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, isNarrow ? 4 : 6)
+        .padding(.horizontal, px(12))
+        .padding(.vertical, px(4))
         .frame(width: controller.size.dimensions.width, height: controller.size.dimensions.height)
         .onHover { hovering in
             isHovered = hovering
-            if hovering, canRefreshOnHover, let snapshot,
-               Date().timeIntervalSince(snapshot.updatedAt) > controller.refreshInterval.seconds {
+            if hovering, canRefreshOnHover, controller.isStale(controller.provider) {
                 controller.refresh()
             }
         }
-        .background(Color.clear)
+        .background {
+            widgetGlassBackground
+                .opacity(isWidgetBackgroundVisible ? 1 : 0)
+        }
+        .animation(.easeInOut(duration: 0.16), value: isWidgetBackgroundVisible)
         .accessibilityElement(children: .contain)
     }
 
@@ -48,8 +58,60 @@ struct UsageWidgetView: View {
         return nil
     }
 
-    private var isNarrow: Bool {
-        controller.size == .tiny || controller.size == .small
+    /// All sizes use the compact layout; smaller sizes scale it down.
+    private var isNarrow: Bool { true }
+
+    private func px(_ value: CGFloat) -> CGFloat {
+        (value * controller.size.scale).rounded(.toNearestOrAwayFromZero)
+    }
+
+    /// "Codex · 2 resets" or "Claude". Reset credits only exist for Codex.
+    private var headerLabel: String {
+        switch controller.provider {
+        case .codex: return "Codex · " + (snapshot?.resetCredits?.label ?? "Resets —")
+        case .claude:
+            if case .unavailable(let message) = controller.state {
+                return message.contains("signed in") || message.contains("wasn’t found")
+                    ? "Claude · sign in: run claude in Terminal"
+                    : "Claude · unavailable"
+            }
+            return "Claude · " + (snapshot?.resetCredits?.label ?? "Resets —")
+        }
+    }
+
+    private var resetCreditHelp: String {
+        let details: String
+        switch controller.provider {
+        case .codex:
+            details = snapshot?.resetCredits?.hoverDetails
+                ?? "Reset-credit information is not available from Codex."
+        case .claude:
+            details = (snapshot?.resetCredits?.hoverDetails ?? "Reset-credit information is not available yet.")
+                + "\nClaude plan limits from the signed-in Claude Code CLI. Reset credits come from Claude’s usage service using Claude Code’s saved login."
+        }
+        let switching = controller.providerMode == .automatic
+            ? "\nSwitches automatically when Codex or Claude is the front app."
+            : ""
+        return details + switching + "\n\nDrag this area to move the widget."
+    }
+
+    private var isWidgetBackgroundVisible: Bool {
+        controller.backgroundMode == .always || isHovered
+    }
+
+    @ViewBuilder
+    private var widgetGlassBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: px(14), style: .continuous)
+        if #available(macOS 26.0, *) {
+            shape
+                .fill(.clear)
+                .glassEffect(.clear, in: shape)
+        } else {
+            shape
+                .fill(.regularMaterial)
+                .overlay { shape.fill(Color.black.opacity(0.42)) }
+                .overlay { shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 0.75) }
+        }
     }
 
     private var canRefreshOnHover: Bool {
@@ -62,21 +124,21 @@ struct UsageWidgetView: View {
 
     @ViewBuilder
     private func usageRow(title: String, window: UsageWindow?) -> some View {
-        VStack(spacing: isNarrow ? 2 : 4) {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
+        VStack(spacing: px(2)) {
+            HStack(alignment: .firstTextBaseline, spacing: px(5)) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: px(12), weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
                 Text(window.map { "\(Int($0.remainingPercent.rounded()))% left" } ?? "—")
-                    .font(.system(size: 11, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.system(size: px(11), weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(color(for: window?.remainingPercent))
                     .shadow(color: .black.opacity(0.4), radius: 0.5, x: 0, y: 0.5)
                     .lineLimit(1)
-                Spacer(minLength: 8)
+                Spacer(minLength: px(8))
                 Text(resetLabel(for: window))
-                    .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: px(10), weight: .medium, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.72))
                     .shadow(color: .black.opacity(0.62), radius: 0.8, x: 0, y: 0.5)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -84,13 +146,13 @@ struct UsageWidgetView: View {
 
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.14))
+                    Capsule().fill(Color.white.opacity(0.18))
                     Capsule()
                         .fill(color(for: window?.remainingPercent))
                         .frame(width: max(0, geometry.size.width * min(max((window?.remainingPercent ?? 0) / 100, 0), 1)))
                 }
             }
-            .frame(height: 5)
+            .frame(height: px(5))
             .shadow(color: color(for: window?.remainingPercent).opacity(0.18), radius: 4, y: 1)
         }
         .frame(maxHeight: .infinity)
@@ -100,9 +162,10 @@ struct UsageWidgetView: View {
     private func controlButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 18, height: 18)
+                .font(.system(size: px(11), weight: .semibold))
+                .foregroundStyle(.white.opacity(0.94))
+                .frame(width: px(18), height: px(18))
+                .background(Circle().fill(Color.white.opacity(0.12)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -118,16 +181,10 @@ struct UsageWidgetView: View {
 
     private func resetLabel(for window: UsageWindow?) -> String {
         guard let timestamp = window?.resetsAt else { return "Reset unavailable" }
-        let date = Date(timeIntervalSince1970: timestamp)
-        let interval = max(0, date.timeIntervalSinceNow)
-        if interval < 24 * 60 * 60 {
-            let hours = Int(interval / 3600)
-            let minutes = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
-            if hours == 0 { return isNarrow ? "in \(minutes)m" : "Resets in \(minutes)m" }
-            return isNarrow ? "in \(hours)h \(minutes)m" : "Resets in \(hours)h \(minutes)m"
-        }
-        let time = date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
-        return isNarrow ? time : "Resets \(time)"
+        let countdown = UsageTimeFormatting.countdown(until: timestamp)
+        if countdown == "unavailable" { return "Reset unavailable" }
+        if countdown == "now" { return isNarrow ? "now" : "Resets now" }
+        return isNarrow ? "in \(countdown)" : "Resets in \(countdown)"
     }
 
     private func rowHelp(window: UsageWindow?) -> String {
